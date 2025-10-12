@@ -22,10 +22,10 @@ pub struct OscillatorBlock {
 }
 
 impl OscillatorBlock {
-    pub fn new(sample_rate: f32, waveform: OscillatorWaveform) -> Self {
+    pub fn new(frequency: f32, sample_rate: f32, waveform: OscillatorWaveform) -> Self {
         Self {
             phase: 0.0,
-            frequency: 440.0,
+            frequency,
             sample_rate,
             waveform,
             duty: 0.5,
@@ -34,7 +34,7 @@ impl OscillatorBlock {
     }
 
     pub fn set_frequency(&mut self, frequency: f32) {
-        self.frequency = frequency;
+        self.frequency = frequency.max(0.0);
     }
 
     pub fn set_waveform(&mut self, waveform: OscillatorWaveform) {
@@ -42,7 +42,7 @@ impl OscillatorBlock {
     }
 
     pub fn set_duty(&mut self, duty: f32) {
-        self.duty = duty;
+        self.duty = duty.clamp(0.0, 1.0);
     }
 
     /*
@@ -52,9 +52,14 @@ impl OscillatorBlock {
         advance phase, and wrap it when we complete a 2π cycle
     */
     pub fn render(&mut self, buffer: &mut [f32], amp: f32) {
+        if self.sample_rate <= 0.0 {
+            buffer.fill(0.0);
+            return;
+        }
+
         let phase_inc: f32 = 2.0 * PI * self.frequency / self.sample_rate;
 
-        for sample in  buffer.iter_mut() {
+        for sample in buffer.iter_mut() {
             let y = match self.waveform {
                 OscillatorWaveform::Sine => self.phase.sin(),
                 // normalized phase in [0,1]: phi = phase / TAU
@@ -109,7 +114,7 @@ mod tests {
 
     #[test]
     fn phase_wrapping() {
-        let mut osc = OscillatorBlock::new(48_000.0, OscillatorWaveform::Sine);
+        let mut osc = OscillatorBlock::new(440.0, 48_000.0, OscillatorWaveform::Sine);
         let mut buffer = [0.0; 128];
         osc.render(&mut buffer, 1.0);
         assert!(osc.phase < TAU);

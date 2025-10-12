@@ -13,13 +13,14 @@ crate-type = ["rlib"]
 [features]
 default = []
 serde = ["dep:serde"]
-cpal-demo = ["dep:cpal"]
+cpal-demo = ["dep:cpal", "dep:crossterm"]
 analysis = ["dep:rustfft"]
 
 [dependencies]
 cpal = { version = "0.15", optional = true }
 rustfft = { version = "6", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
+crossterm = { version = "0.27", optional = true }
 
 [dev-dependencies]
 
