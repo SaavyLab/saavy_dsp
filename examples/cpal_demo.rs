@@ -5,16 +5,16 @@ use std::sync::{Arc, Mutex};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 #[cfg(feature = "cpal-demo")]
+use crossterm::event::{Event, KeyCode, KeyEventKind};
+#[cfg(feature = "cpal-demo")]
+use crossterm::{event, terminal};
+#[cfg(feature = "cpal-demo")]
 use saavy_dsp::dsp_fluent::{
     envelope_node::{EnvelopeHandle, SharedAdsrEnvNode},
     node_extension::NodeExt,
     oscillator_node::OscNode,
     voice_node::RenderCtx,
 };
-#[cfg(feature = "cpal-demo")]
-use crossterm::{event, terminal};
-#[cfg(feature = "cpal-demo")]
-use crossterm::event::{Event, KeyCode, KeyEventKind};
 #[cfg(feature = "cpal-demo")]
 use std::time::Duration;
 #[cfg(feature = "cpal-demo")]
@@ -43,7 +43,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let channels = stream_config.channels as usize;
     let sample_rate = stream_config.sample_rate.0;
 
-    let state = Arc::new(Mutex::new(EngineState::new(sample_rate, block_size, channels)));
+    let state = Arc::new(Mutex::new(EngineState::new(
+        sample_rate,
+        block_size,
+        channels,
+    )));
     let callback_state = Arc::clone(&state);
     let control_state = Arc::clone(&state);
 
@@ -73,9 +77,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 state.ctx.block_size = frames;
             }
 
-            state
-                .synth
-                .render_block(&mut state.ctx, &mut state.buffer);
+            state.synth.render_block(&mut state.ctx, &mut state.buffer);
 
             for frame in 0..frames {
                 let sample = state.buffer[frame];
@@ -114,7 +116,8 @@ impl EngineState {
         let decay = 0.1;
         let sustain = 0.8;
         let release = 0.3;
-        let (env_node, gate) = SharedAdsrEnvNode::with_params(sample_rate as f32, attack, decay, sustain, release);
+        let (env_node, gate) =
+            SharedAdsrEnvNode::with_params(sample_rate as f32, attack, decay, sustain, release);
         let synth = OscNode::sine(220.0, sample_rate as f32).amplify(env_node);
 
         Self {
@@ -141,41 +144,39 @@ fn control_loop(state: Arc<Mutex<EngineState>>) {
     loop {
         if event::poll(Duration::from_millis(20)).unwrap_or(false) {
             match event::read() {
-                Ok(Event::Key(key)) => {
-                    match key.code {
-                        KeyCode::Char(' ') => {
-                            let mut guard = state.lock().expect("engine mutex poisoned");
-                            match key.kind {
-                                KeyEventKind::Press => {
-                                    if guard.gate_on {
-                                        guard.gate.note_off();
-                                        guard.gate_on = false;
-                                    } else {
-                                        guard.gate.note_on();
-                                        guard.gate_on = true;
-                                    }
+                Ok(Event::Key(key)) => match key.code {
+                    KeyCode::Char(' ') => {
+                        let mut guard = state.lock().expect("engine mutex poisoned");
+                        match key.kind {
+                            KeyEventKind::Press => {
+                                if guard.gate_on {
+                                    guard.gate.note_off();
+                                    guard.gate_on = false;
+                                } else {
+                                    guard.gate.note_on();
+                                    guard.gate_on = true;
                                 }
-                                KeyEventKind::Release => {
-                                    if guard.gate_on {
-                                        guard.gate.note_off();
-                                        guard.gate_on = false;
-                                    }
+                            }
+                            KeyEventKind::Release => {
+                                if guard.gate_on {
+                                    guard.gate.note_off();
+                                    guard.gate_on = false;
                                 }
-                                KeyEventKind::Repeat => {}
                             }
+                            KeyEventKind::Repeat => {}
                         }
-                        KeyCode::Esc => {
-                            let mut guard = state.lock().expect("engine mutex poisoned");
-                            if guard.gate_on {
-                                guard.gate.note_off();
-                                guard.gate_on = false;
-                            }
-                            break;
-                        }
-                        _ => {}
                     }
-                }
-                Ok(Event::Mouse(_)) | Ok(Event::Resize(_, _)) => {},
+                    KeyCode::Esc => {
+                        let mut guard = state.lock().expect("engine mutex poisoned");
+                        if guard.gate_on {
+                            guard.gate.note_off();
+                            guard.gate_on = false;
+                        }
+                        break;
+                    }
+                    _ => {}
+                },
+                Ok(Event::Mouse(_)) | Ok(Event::Resize(_, _)) => {}
                 Ok(_) => break,
                 Err(_) => break,
             }

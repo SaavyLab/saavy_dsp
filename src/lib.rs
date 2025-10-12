@@ -33,7 +33,8 @@ pub struct SaavyEngine {
 
 impl SaavyEngine {
     pub fn new(config: EngineConfig) -> Self {
-        let oscillator = OscillatorBlock::new(440.0, config.sample_rate as f32, OscillatorWaveform::Sine);
+        let oscillator =
+            OscillatorBlock::new(440.0, config.sample_rate as f32, OscillatorWaveform::Sine);
         Self {
             config,
             oscillator,
@@ -51,7 +52,8 @@ impl SaavyEngine {
             channel.resize(frames, 0.0);
         }
 
-        self.oscillator.render(&mut _outputs.buffers[0], self.amplitude);
+        self.oscillator
+            .render(&mut _outputs.buffers[0], self.amplitude);
 
         if _outputs.buffers.len() > 1 {
             let (head, tail) = _outputs.buffers.split_at_mut(1);
