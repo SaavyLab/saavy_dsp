@@ -24,8 +24,13 @@ where
     M: VoiceNode,
 {
     fn render_block(&mut self, ctx: &mut RenderCtx, out: &mut [f32]) {
-        let carrier = &mut self.carrier[..out.len()];
-        let gain = &mut self.gain[..out.len()];
+        let frames = out.len();
+        debug_assert!(frames <= MAX_BLOCK_SIZE);
+
+        let carrier = &mut self.carrier[..frames];
+        let gain = &mut self.gain[..frames];
+        carrier.fill(0.0);
+        gain.fill(0.0);
 
         self.signal.render_block(ctx, carrier);
         self.modulator.render_block(ctx, gain);

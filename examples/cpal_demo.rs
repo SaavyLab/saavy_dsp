@@ -56,7 +56,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let stream = device.build_output_stream(
         &stream_config,
         move |data: &mut [f32], _| {
-            use saavy_dsp::dsp_fluent::voice_node::VoiceNode;
+            use saavy_dsp::{dsp_fluent::voice_node::VoiceNode, MAX_BLOCK_SIZE};
 
             let mut guard = callback_state.lock().expect("engine mutex poisoned");
             let state = &mut *guard;
@@ -67,20 +67,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 data.len() / state.channels
             };
 
-            if frames == 0 {
-                data.fill(0.0);
-                return;
-            }
+            debug_assert!(frames <= MAX_BLOCK_SIZE);
+            let buf = &mut state.buffer[..frames];
+            buf.fill(0.0);
+            state.ctx.block_size = frames;
 
-            if frames != state.buffer.len() {
-                state.buffer.resize(frames, 0.0);
-                state.ctx.block_size = frames;
-            }
-
-            state.synth.render_block(&mut state.ctx, &mut state.buffer);
+            state.synth.render_block(&mut state.ctx, buf);
 
             for frame in 0..frames {
-                let sample = state.buffer[frame];
+                let sample = buf[frame];
                 for channel in 0..state.channels {
                     data[frame * state.channels + channel] = sample;
                 }
@@ -111,10 +106,12 @@ struct EngineState {
 #[cfg(feature = "cpal-demo")]
 impl EngineState {
     fn new(sample_rate: u32, block_size: u32, channels: usize) -> Self {
+        use saavy_dsp::MAX_BLOCK_SIZE;
+
         let channel_count = channels.max(1);
-        let attack = 0.1;
-        let decay = 0.1;
-        let sustain = 0.8;
+        let attack = 0.6;
+        let decay = 0.8;
+        let sustain = 0.2;
         let release = 0.3;
         let (env_node, gate) =
             SharedAdsrEnvNode::with_params(sample_rate as f32, attack, decay, sustain, release);
@@ -123,7 +120,7 @@ impl EngineState {
         Self {
             synth,
             ctx: RenderCtx::new(sample_rate as f32, block_size as usize),
-            buffer: vec![0.0; block_size as usize],
+            buffer: vec![0.0; MAX_BLOCK_SIZE],
             channels: channel_count,
             gate,
             gate_on: false,
