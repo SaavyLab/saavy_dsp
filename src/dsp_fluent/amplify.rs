@@ -1,4 +1,4 @@
-use crate::dsp_fluent::voice_node::{RenderCtx, VoiceNode};
+use crate::{dsp_fluent::voice_node::{RenderCtx, VoiceNode}, MAX_BLOCK_SIZE};
 
 pub struct Amplify<N, M> {
     pub signal: N,
@@ -12,8 +12,8 @@ impl<N, M> Amplify<N, M> {
         Self {
             signal,
             modulator,
-            carrier: Vec::new(),
-            gain: Vec::new(),
+            carrier: vec![0.0; MAX_BLOCK_SIZE],
+            gain: vec![0.0; MAX_BLOCK_SIZE],
         }
     }
 }
@@ -24,13 +24,13 @@ where
     M: VoiceNode,
 {
     fn render_block(&mut self, ctx: &mut RenderCtx, out: &mut [f32]) {
-        self.carrier.resize(out.len(), 0.0);
-        self.gain.resize(out.len(), 0.0);
+        let carrier = &mut self.carrier[..out.len()];
+        let gain = &mut self.gain[..out.len()];
 
-        self.signal.render_block(ctx, &mut self.carrier);
-        self.modulator.render_block(ctx, &mut self.gain);
+        self.signal.render_block(ctx, carrier);
+        self.modulator.render_block(ctx, gain);
 
-        for (o, (c, g)) in out.iter_mut().zip(self.carrier.iter().zip(&self.gain)) {
+        for (o, (c, g)) in out.iter_mut().zip(carrier.iter().zip(gain.iter())) {
             *o = c * g;
         }
     }
