@@ -7,7 +7,9 @@ pub mod tooling;
 
 use dsp::oscillator::{OscillatorBlock, OscillatorWaveform};
 
-const MAX_BLOCK_SIZE: usize = 2048;
+pub const MAX_BLOCK_SIZE: usize = 2048;
+const MIN_SAMPLE_RATE: f32 = 8_000.0;
+const MIN_TIME: f32 = 1.0 / 48_000.0;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]

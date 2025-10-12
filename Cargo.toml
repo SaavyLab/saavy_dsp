@@ -11,7 +11,7 @@ name = "saavy_dsp"
 crate-type = ["rlib"]
 
 [features]
-default = []
+default = ["cpal-demo"]
 serde = ["dep:serde"]
 cpal-demo = ["dep:cpal", "dep:crossterm"]
 analysis = ["dep:rustfft"]

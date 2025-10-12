@@ -1,3 +1,5 @@
+use crate::{MIN_SAMPLE_RATE, MIN_TIME};
+
 /*
 Level
   1.0 ┐     ╱╲________
@@ -35,9 +37,11 @@ pub struct AdsrEnvelope {
 
     state: EnvelopeState,
     current_level: f32,
+    decay_start: f32,
     release_samples: u32,
     release_progress: u32,
     release_start: f32,
+    release_step: f32,
     sample_rate: f32,
 }
 
@@ -51,10 +55,12 @@ impl AdsrEnvelope {
 
             state: EnvelopeState::Idle,
             current_level: 0.0,
+            decay_start: 0.0,
             release_samples: 1,
             release_progress: 0,
+            release_step: 0.0,
             release_start: 0.0,
-            sample_rate,
+            sample_rate: sample_rate.max(MIN_SAMPLE_RATE),
         }
     }
 
@@ -66,17 +72,19 @@ impl AdsrEnvelope {
         release: f32,
     ) -> Self {
         Self {
-            attack,
-            decay,
-            sustain,
-            release,
+            attack: attack.max(MIN_TIME),
+            decay: decay.max(MIN_TIME),
+            sustain: sustain.clamp(0.0, 1.0),
+            release: release.max(MIN_TIME),
 
             state: EnvelopeState::Idle,
+            decay_start: 0.0,
             current_level: 0.0,
             release_samples: 1,
             release_progress: 0,
+            release_step: 0.0,
             release_start: 0.0,
-            sample_rate,
+            sample_rate: sample_rate.max(MIN_SAMPLE_RATE),
         }
     }
 
@@ -86,13 +94,21 @@ impl AdsrEnvelope {
     }
 
     pub fn note_off(&mut self) {
-        // Only transition to release if we're not already idle
-        if !matches!(self.state, EnvelopeState::Idle) {
-            self.release_start = self.current_level;
-            self.release_samples = (self.release * self.sample_rate).round().max(1.0) as u32;
-            self.release_progress = 0;
-            self.state = EnvelopeState::Release;
+        if matches!(self.state, EnvelopeState::Idle) { 
+            return;
         }
+
+        self.release_start = self.current_level;
+        if self.release <= MIN_TIME {
+            self.release_samples = 1;
+            self.release_step = self.release_start;
+        } else {
+            self.release_samples = (self.release * self.sample_rate).round().max(1.0) as u32;
+            self.release_step = self.release_start / self.release_samples as f32;
+        }
+
+        self.release_progress = 0;
+        self.state = EnvelopeState::Release;
     }
 
     pub fn next_sample(&mut self) -> f32 {
@@ -105,13 +121,14 @@ impl AdsrEnvelope {
 
                 if self.current_level >= 1.0 {
                     self.current_level = 1.0;
+                    self.decay_start = self.current_level.max(self.sustain);
                     self.state = EnvelopeState::Decay;
                 }
             }
             EnvelopeState::Decay => {
                 // Ramp down from 1.0 to 0.0 over decay time
                 let target = self.sustain;
-                let decrement = (1.0 - target) / (self.decay * self.sample_rate);
+                let decrement = (self.decay_start - target) / (self.decay * self.sample_rate);
                 self.current_level -= decrement;
 
                 if self.current_level <= target {
@@ -124,25 +141,12 @@ impl AdsrEnvelope {
                 self.current_level = self.sustain;
             }
             EnvelopeState::Release => {
-                if self.release == 0.0 {
+                self.current_level = (self.release_start - self.release_step * self.release_progress as f32).max(0.0);
+                self.release_progress = self.release_progress.saturating_add(1);
+
+                if self.release_progress >= self.release_samples {
                     self.current_level = 0.0;
                     self.state = EnvelopeState::Idle;
-                } else {
-                    let release_samples = self.release_samples.max(1);
-                    let progress = self.release_progress.min(release_samples);
-                    let decrement = if release_samples == 0 {
-                        self.release_start
-                    } else {
-                        self.release_start / release_samples as f32
-                    };
-                    self.current_level =
-                        (self.release_start - decrement * progress as f32).max(0.0);
-                    self.release_progress = self.release_progress.saturating_add(1);
-
-                    if self.release_progress >= release_samples {
-                        self.current_level = 0.0;
-                        self.state = EnvelopeState::Idle;
-                    }
                 }
             }
         }
@@ -169,6 +173,7 @@ impl AdsrEnvelope {
     pub fn reset(&mut self) {
         self.state = EnvelopeState::Idle;
         self.current_level = 0.0;
+        self.decay_start = 0.0;
         self.release_progress = 0;
         self.release_start = 0.0;
     }
