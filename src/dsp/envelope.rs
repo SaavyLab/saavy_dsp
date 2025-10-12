@@ -54,11 +54,17 @@ impl AdsrEnvelope {
             release_samples: 1,
             release_progress: 0,
             release_start: 0.0,
-            sample_rate
+            sample_rate,
         }
     }
 
-    pub fn with_params(sample_rate: f32, attack: f32, decay: f32, sustain: f32, release: f32) -> Self {
+    pub fn with_params(
+        sample_rate: f32,
+        attack: f32,
+        decay: f32,
+        sustain: f32,
+        release: f32,
+    ) -> Self {
         Self {
             attack,
             decay,
@@ -70,18 +76,18 @@ impl AdsrEnvelope {
             release_samples: 1,
             release_progress: 0,
             release_start: 0.0,
-            sample_rate
+            sample_rate,
         }
     }
 
     pub fn note_on(&mut self) {
         self.state = EnvelopeState::Attack;
         self.release_progress = 0;
-    } 
+    }
 
     pub fn note_off(&mut self) {
         // Only transition to release if we're not already idle
-        if !matches!(self.state, EnvelopeState::Idle)  {
+        if !matches!(self.state, EnvelopeState::Idle) {
             self.release_start = self.current_level;
             self.release_samples = (self.release * self.sample_rate).round().max(1.0) as u32;
             self.release_progress = 0;
@@ -101,7 +107,7 @@ impl AdsrEnvelope {
                     self.current_level = 1.0;
                     self.state = EnvelopeState::Decay;
                 }
-            },
+            }
             EnvelopeState::Decay => {
                 // Ramp down from 1.0 to 0.0 over decay time
                 let target = self.sustain;
@@ -112,11 +118,11 @@ impl AdsrEnvelope {
                     self.current_level = target;
                     self.state = EnvelopeState::Sustain;
                 }
-            },
+            }
             EnvelopeState::Sustain => {
                 // Hold at sustain level until note_off
                 self.current_level = self.sustain;
-            },
+            }
             EnvelopeState::Release => {
                 if self.release == 0.0 {
                     self.current_level = 0.0;
@@ -124,8 +130,13 @@ impl AdsrEnvelope {
                 } else {
                     let release_samples = self.release_samples.max(1);
                     let progress = self.release_progress.min(release_samples);
-                    let decrement = if release_samples == 0 { self.release_start } else { self.release_start / release_samples as f32 };
-                    self.current_level = (self.release_start - decrement * progress as f32).max(0.0);
+                    let decrement = if release_samples == 0 {
+                        self.release_start
+                    } else {
+                        self.release_start / release_samples as f32
+                    };
+                    self.current_level =
+                        (self.release_start - decrement * progress as f32).max(0.0);
                     self.release_progress = self.release_progress.saturating_add(1);
 
                     if self.release_progress >= release_samples {
@@ -144,7 +155,7 @@ impl AdsrEnvelope {
             *sample *= self.next_sample();
         }
     }
-    
+
     pub fn render(&mut self, buffer: &mut [f32]) {
         for sample in buffer.iter_mut() {
             *sample = self.next_sample();

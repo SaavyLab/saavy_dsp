@@ -29,7 +29,7 @@ impl OscillatorBlock {
             sample_rate,
             waveform,
             duty: 0.5,
-            rng: 0x9E3779B9
+            rng: 0x9E3779B9,
         }
     }
 
@@ -66,13 +66,17 @@ impl OscillatorBlock {
                 OscillatorWaveform::Saw => {
                     let phi = self.phase / TAU;
                     (2.0 * phi) - 1.0
-                },
+                }
                 OscillatorWaveform::Square => {
                     // compare normalized phase to duty
                     let phi = self.phase / TAU;
-                    if phi < self.duty { 1.0 } else { -1.0 }
-                },
-                OscillatorWaveform::Noise => self.next_noise()
+                    if phi < self.duty {
+                        1.0
+                    } else {
+                        -1.0
+                    }
+                }
+                OscillatorWaveform::Noise => self.next_noise(),
             };
 
             *sample = amp * y;
@@ -86,19 +90,19 @@ impl OscillatorBlock {
         pseudo-random number generator xorshift32
         Original u32:  11010110 10110101 01101011 10110110 (32 bits, random)
                         ^^^^^^^^^ ← throw away top 9 bits
-                
+
         After >> 9:    00000000 01101011 01011010 1101011 (23 bits remain)
                                  ^^^^^^^^^^^^^^^^^^^^^^^ these become your random float
 
         Divide by 2^23: Normalizes to 0.0 - 1.0
-        Times 2.0:      Scales to 0.0 - 2.0  
+        Times 2.0:      Scales to 0.0 - 2.0
         Minus 1.0:      Shifts to -1.0 - 1.0 ✅
     */
     pub fn next_noise(&mut self) -> f32 {
         let mut x = self.rng;
         // xorshift32 -> map to [-1, 1]
-        x ^= x << 13; 
-        x ^= x >> 17; 
+        x ^= x << 13;
+        x ^= x >> 17;
         x ^= x << 5;
         self.rng = x;
 
