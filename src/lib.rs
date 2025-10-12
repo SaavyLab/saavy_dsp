@@ -7,6 +7,8 @@ pub mod tooling;
 
 use dsp::oscillator::{OscillatorBlock, OscillatorWaveform};
 
+const MAX_BLOCK_SIZE: usize = 2048;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct EngineConfig {
