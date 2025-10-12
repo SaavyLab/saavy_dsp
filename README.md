@@ -73,3 +73,20 @@ early. the core is being carved with testable slices first; api surface may shif
 ## license
 
 mit/apl2. pick your poison.
+
+## northstar compositional syntax
+```rust
+// Define building blocks
+let osc = Oscillator::sine(440.0);
+let env = Envelope::adsr(0.01, 0.1, 0.7, 0.3);
+let filter = Filter::lowpass(1000.0, 0.7);
+
+// Compose them
+let synth = osc
+    .amplify(env)
+    .through(filter)
+    .mix(0.5);
+
+// Render
+synth.render(&mut buffer);
+```
