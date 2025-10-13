@@ -64,13 +64,7 @@ impl Envelope {
         }
     }
 
-    pub fn adsr(
-        sample_rate: f32,
-        attack: f32,
-        decay: f32,
-        sustain: f32,
-        release: f32,
-    ) -> Self {
+    pub fn adsr(sample_rate: f32, attack: f32, decay: f32, sustain: f32, release: f32) -> Self {
         Self {
             attack: attack.max(MIN_TIME),
             decay: decay.max(MIN_TIME),
@@ -94,7 +88,7 @@ impl Envelope {
     }
 
     pub fn note_off(&mut self) {
-        if matches!(self.state, EnvelopeState::Idle) { 
+        if matches!(self.state, EnvelopeState::Idle) {
             return;
         }
 
@@ -141,7 +135,9 @@ impl Envelope {
                 self.current_level = self.sustain;
             }
             EnvelopeState::Release => {
-                self.current_level = (self.release_start - self.release_step * self.release_progress as f32).max(0.0);
+                self.current_level = (self.release_start
+                    - self.release_step * self.release_progress as f32)
+                    .max(0.0);
                 self.release_progress = self.release_progress.saturating_add(1);
 
                 if self.release_progress >= self.release_samples {

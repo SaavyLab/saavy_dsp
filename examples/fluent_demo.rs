@@ -1,8 +1,8 @@
-use saavy_dsp::dsp_fluent::{
-    envelope_node::EnvNode,
-    node_extension::NodeExt,
-    oscillator_node::OscNode,
-    voice_node::{RenderCtx, VoiceNode},
+use saavy_dsp::graph::{
+    envelope::EnvNode,
+    extensions::NodeExt,
+    node::{GraphNode, RenderCtx},
+    oscillator::OscNode,
 };
 
 fn main() {

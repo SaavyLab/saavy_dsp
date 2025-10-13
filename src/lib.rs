@@ -1,9 +1,7 @@
 pub mod dsp;
-pub mod dsp_fluent;
-pub mod engine;
+pub mod graph; // Composable audio graph nodes (was dsp_fluent, was voice)
 pub mod io;
-pub mod patch;
-pub mod tooling;
+pub mod synth; // Voice management and polyphony
 
 use dsp::oscillator::{OscillatorBlock, OscillatorWaveform};
 
