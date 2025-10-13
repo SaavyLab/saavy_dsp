@@ -24,52 +24,32 @@ saavy_dsp provides oscillators, envelopes, and a graph-based architecture for bu
 
 ## quickstart
 
-### Basic Graph Composition
-
-```rust
-use saavy_dsp::graph::{
-    envelope::EnvNode,
-    extensions::NodeExt,
-    node::GraphNode,
-    oscillator::OscNode,
-};
-
-fn main() {
-    let sample_rate = 48_000.0;
-
-    // Create graph nodes
-    let mut env = EnvNode::with_params(sample_rate, 0.01, 0.1, 0.7, 0.3);
-    env.note_on();
-    let mut synth = OscNode::sine(440.0, sample_rate).amplify(env);
-
-    // Render audio
-    let mut buffer = vec![0.0; 128];
-    synth.render_block(&mut buffer);
-}
-```
-
-### Polyphonic Synthesis
+### Polyphonic Synthesis (MIDI/Keyboard)
 
 ```rust
 use rtrb::RingBuffer;
-use saavy_dsp::synth::{message::SynthMessage, poly::PolySynth};
+use saavy_dsp::{
+    graph::{envelope::EnvNode, extensions::NodeExt, oscillator::OscNode},
+    synth::{message::SynthMessage, poly::PolySynth},
+};
 
 fn main() {
     let sample_rate = 48_000.0;
     let (mut tx, rx) = RingBuffer::<SynthMessage>::new(64);
 
-    let mut synth = PolySynth::new(
-        sample_rate,
-        8,    // max voices
-        rx,
-        0.01, // attack
-        0.1,  // decay
-        0.7,  // sustain
-        0.3,  // release
-    );
+    // Design your sound (the "patch")
+    let factory = || {
+        let osc = OscNode::sine();
+        let env = EnvNode::adsr(0.01, 0.1, 0.7, 0.3);
+        osc.amplify(env)
+    };
 
-    // Send MIDI events
+    // Create polyphonic synth
+    let mut synth = PolySynth::new(sample_rate, 8, factory, rx);
+
+    // Play notes
     let _ = tx.push(SynthMessage::NoteOn { note: 60, velocity: 100 });
+    let _ = tx.push(SynthMessage::NoteOn { note: 64, velocity: 100 });
 
     // Render
     let mut buffer = vec![0.0; 256];
@@ -77,17 +57,43 @@ fn main() {
 }
 ```
 
+### Direct Frequency (Metronome/Drums)
+
+```rust
+use saavy_dsp::graph::{
+    envelope::EnvNode,
+    extensions::NodeExt,
+    node::{GraphNode, RenderCtx},
+    oscillator::OscNode,
+};
+
+fn main() {
+    let sample_rate = 48_000.0;
+
+    // Create a click sound
+    let mut click = OscNode::sine().amplify(EnvNode::adsr(0.001, 0.01, 0.0, 0.02));
+
+    // Use direct frequency (not MIDI notes)
+    let ctx = RenderCtx::from_freq(sample_rate, 2500.0, 1.0);
+    click.note_on(&ctx);
+
+    // Render
+    let mut buffer = vec![0.0; 128];
+    click.render_block(&mut buffer, &ctx);
+}
+```
+
 ## examples
 
-* `examples/fluent_demo.rs` — basic graph composition
-* `examples/graph_basics.rs` — multiple graph patterns
 * `examples/envelope_demo.rs` — ADSR phase visualization
 * `examples/polyphony_demo.rs` — voice management and stealing
+* `examples/simple_poly.rs` — basic polyphonic synthesis
 * `examples/cpal_demo.rs` — real-time interactive audio (`--features cpal-demo`)
 
 Run with:
 ```bash
-cargo run --example fluent_demo
+cargo run --example envelope_demo
+cargo run --example simple_poly
 cargo run --features cpal-demo --example cpal_demo
 ```
 
@@ -112,7 +118,7 @@ src/
 
 **Graph Nodes**: Building blocks that implement `GraphNode` trait
 - `OscNode` - Oscillator (sine, saw, square, noise)
-- `EnvNode` / `SharedEnvNode` - ADSR envelope
+- `EnvNode` - ADSR envelope
 - `Amplify` - Multiplies two signals (ring modulation)
 
 **Polyphony**: Fixed voice pool with automatic allocation
