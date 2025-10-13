@@ -1,10 +1,12 @@
-use crate::{graph::node::GraphNode, MAX_BLOCK_SIZE};
+use crate::{
+    graph::node::{GraphNode, RenderCtx},
+    MAX_BLOCK_SIZE,
+};
 
 pub struct Amplify<N, M> {
     pub signal: N,
     pub modulator: M,
-    carrier: Vec<f32>,
-    gain: Vec<f32>,
+    temp_buffer: Vec<f32>,
 }
 
 impl<N, M> Amplify<N, M> {
@@ -12,31 +14,38 @@ impl<N, M> Amplify<N, M> {
         Self {
             signal,
             modulator,
-            carrier: vec![0.0; MAX_BLOCK_SIZE],
-            gain: vec![0.0; MAX_BLOCK_SIZE],
+            temp_buffer: vec![0.0; MAX_BLOCK_SIZE],
         }
     }
 }
 
-impl<N, M> GraphNode for Amplify<N, M>
-where
-    N: GraphNode,
-    M: GraphNode,
-{
-    fn render_block(&mut self, out: &mut [f32]) {
-        let frames = out.len();
-        debug_assert!(frames <= MAX_BLOCK_SIZE);
+impl<N: GraphNode, M: GraphNode> GraphNode for Amplify<N, M> {
+    fn render_block(&mut self, out: &mut [f32], ctx: &RenderCtx) {
+        // Render signal into output
+        self.signal.render_block(out, ctx);
 
-        let carrier = &mut self.carrier[..frames];
-        let gain = &mut self.gain[..frames];
-        carrier.fill(0.0);
-        gain.fill(0.0);
+        // Slice temp buffer to match output size (RT-safe, no allocation)
+        let frames = &mut self.temp_buffer[..out.len()];
+        frames.fill(0.0);
+        self.modulator.render_block(frames, ctx);
 
-        self.signal.render_block(carrier);
-        self.modulator.render_block(gain);
-
-        for (o, (c, g)) in out.iter_mut().zip(carrier.iter().zip(gain.iter())) {
-            *o = c * g;
+        // Multiply signal by modulator (ring modulation / amplitude control)
+        for (o, m) in out.iter_mut().zip(frames.iter()) {
+            *o *= *m;
         }
+    }
+
+    fn note_on(&mut self, ctx: &RenderCtx) {
+        self.signal.note_on(ctx);
+        self.modulator.note_on(ctx);
+    }
+
+    fn note_off(&mut self, ctx: &RenderCtx) {
+        self.signal.note_off(ctx);
+        self.modulator.note_off(ctx);
+    }
+
+    fn is_active(&self) -> bool {
+        self.modulator.is_active()
     }
 }

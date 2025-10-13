@@ -1,4 +1,4 @@
-use crate::{MIN_SAMPLE_RATE, MIN_TIME};
+use crate::{graph::node::RenderCtx, MIN_TIME};
 
 /*
 Level
@@ -42,11 +42,10 @@ pub struct Envelope {
     release_progress: u32,
     release_start: f32,
     release_step: f32,
-    sample_rate: f32,
 }
 
 impl Envelope {
-    pub fn new(sample_rate: f32) -> Self {
+    pub fn new() -> Self {
         Self {
             attack: 0.01, // 10ms
             decay: 0.1,   // 100ms
@@ -60,11 +59,10 @@ impl Envelope {
             release_progress: 0,
             release_step: 0.0,
             release_start: 0.0,
-            sample_rate: sample_rate.max(MIN_SAMPLE_RATE),
         }
     }
 
-    pub fn adsr(sample_rate: f32, attack: f32, decay: f32, sustain: f32, release: f32) -> Self {
+    pub fn adsr(attack: f32, decay: f32, sustain: f32, release: f32) -> Self {
         Self {
             attack: attack.max(MIN_TIME),
             decay: decay.max(MIN_TIME),
@@ -78,16 +76,15 @@ impl Envelope {
             release_progress: 0,
             release_step: 0.0,
             release_start: 0.0,
-            sample_rate: sample_rate.max(MIN_SAMPLE_RATE),
         }
     }
 
-    pub fn note_on(&mut self) {
+    pub fn note_on(&mut self, _ctx: &RenderCtx) {
         self.state = EnvelopeState::Attack;
         self.release_progress = 0;
     }
 
-    pub fn note_off(&mut self) {
+    pub fn note_off(&mut self, ctx: &RenderCtx) {
         if matches!(self.state, EnvelopeState::Idle) {
             return;
         }
@@ -97,7 +94,7 @@ impl Envelope {
             self.release_samples = 1;
             self.release_step = self.release_start;
         } else {
-            self.release_samples = (self.release * self.sample_rate).round().max(1.0) as u32;
+            self.release_samples = (self.release * ctx.sample_rate).round().max(1.0) as u32;
             self.release_step = self.release_start / self.release_samples as f32;
         }
 
@@ -105,12 +102,12 @@ impl Envelope {
         self.state = EnvelopeState::Release;
     }
 
-    pub fn next_sample(&mut self) {
+    pub fn next_sample(&mut self, ctx: &RenderCtx) {
         match self.state {
             EnvelopeState::Idle => self.current_level = 0.0,
             EnvelopeState::Attack => {
                 // Ramp up from 0.0 to 1.0 over attack time
-                let increment = 1.0 / (self.attack * self.sample_rate);
+                let increment = 1.0 / (self.attack * ctx.sample_rate);
                 self.current_level += increment;
 
                 if self.current_level >= 1.0 {
@@ -122,7 +119,7 @@ impl Envelope {
             EnvelopeState::Decay => {
                 // Ramp down from 1.0 to 0.0 over decay time
                 let target = self.sustain;
-                let decrement = (self.decay_start - target) / (self.decay * self.sample_rate);
+                let decrement = (self.decay_start - target) / (self.decay * ctx.sample_rate);
                 self.current_level -= decrement;
 
                 if self.current_level <= target {
@@ -150,9 +147,9 @@ impl Envelope {
         debug_assert!((0.0..=1.0).contains(&self.current_level));
     }
 
-    pub fn render(&mut self, buffer: &mut [f32]) {
+    pub fn render(&mut self, buffer: &mut [f32], ctx: &RenderCtx) {
         for sample in buffer.iter_mut() {
-            self.next_sample();
+            self.next_sample(ctx);
             *sample = self.current_level;
         }
     }

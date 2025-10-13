@@ -1,29 +1,30 @@
-use crate::dsp::oscillator::{OscillatorBlock, OscillatorWaveform};
-use crate::graph::node::GraphNode;
+use crate::dsp::oscillator::OscillatorBlock;
+use crate::graph::node::{GraphNode, RenderCtx};
 
 pub struct OscNode {
     osc: OscillatorBlock,
 }
 
 impl OscNode {
-    pub fn sine(freq: f32, sr: f32) -> Self {
-        let osc = OscillatorBlock::new(freq, sr, OscillatorWaveform::Sine);
+    pub fn sine() -> Self {
+        let osc = OscillatorBlock::sine();
         Self { osc }
     }
 
-    pub fn saw(freq: f32, sr: f32) -> Self {
-        let osc = OscillatorBlock::new(freq, sr, OscillatorWaveform::Saw);
+    pub fn saw() -> Self {
+        let osc = OscillatorBlock::saw();
         Self { osc }
     }
 
-    pub fn set_frequency(&mut self, freq: f32) {
-        self.osc.set_frequency(freq);
+    pub fn square() -> Self {
+        let osc = OscillatorBlock::square();
+        Self { osc }
     }
 }
 
 impl GraphNode for OscNode {
-    fn render_block(&mut self, out: &mut [f32]) {
-        self.osc.render(out, 1.0);
+    fn render_block(&mut self, out: &mut [f32], ctx: &RenderCtx) {
+        self.osc.render(out, ctx);
     }
 }
 
@@ -36,22 +37,19 @@ mod tests {
 
     #[test]
     fn valid_sine() {
-        let freq = 440.0;
         let sample_rate = 48_000.0;
         let block_size = 128;
+        let note = 69; // MIDI note 69 = A4 = 440Hz
 
-        let mut ctx = RenderCtx::new(sample_rate, block_size);
-        let mut synth = OscNode::sine(freq, sample_rate);
-        // .amplify(EnvelopeNode::adsr(...))
-        // .through(FilterNode::lowpass(...));
+        let ctx = RenderCtx::from_note(sample_rate, note, 100.0);
+        let mut synth = OscNode::sine();
 
         let mut buffer = vec![0.0f32; block_size];
-        synth.render_block(&mut buffer);
-        ctx.advance(buffer.len());
+        synth.render_block(&mut buffer, &ctx);
 
-        // sample n should be sin(2pi f n / sr)
+        // sample n should be sin(2pi f n / sr), where f = 440Hz (MIDI 69)
         let sample_index = 12;
-        let expected = (TAU * freq * sample_index as f32 / sample_rate).sin();
+        let expected = (TAU * ctx.frequency * sample_index as f32 / sample_rate).sin();
         let actual = buffer[sample_index];
         assert!(
             (actual - expected).abs() < 1e-6,
