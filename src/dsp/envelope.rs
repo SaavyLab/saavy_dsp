@@ -29,7 +29,7 @@ pub enum EnvelopeState {
     Release,
 }
 
-pub struct AdsrEnvelope {
+pub struct Envelope {
     attack: f32,
     decay: f32,
     sustain: f32,
@@ -45,7 +45,7 @@ pub struct AdsrEnvelope {
     sample_rate: f32,
 }
 
-impl AdsrEnvelope {
+impl Envelope {
     pub fn new(sample_rate: f32) -> Self {
         Self {
             attack: 0.01, // 10ms
@@ -64,7 +64,7 @@ impl AdsrEnvelope {
         }
     }
 
-    pub fn with_params(
+    pub fn adsr(
         sample_rate: f32,
         attack: f32,
         decay: f32,
@@ -111,7 +111,7 @@ impl AdsrEnvelope {
         self.state = EnvelopeState::Release;
     }
 
-    pub fn next_sample(&mut self) -> f32 {
+    pub fn next_sample(&mut self) {
         match self.state {
             EnvelopeState::Idle => self.current_level = 0.0,
             EnvelopeState::Attack => {
@@ -151,18 +151,13 @@ impl AdsrEnvelope {
             }
         }
 
-        self.current_level.max(0.0).min(1.0)
-    }
-
-    pub fn apply(&mut self, buffer: &mut [f32]) {
-        for sample in buffer.iter_mut() {
-            *sample *= self.next_sample();
-        }
+        debug_assert!((0.0..=1.0).contains(&self.current_level));
     }
 
     pub fn render(&mut self, buffer: &mut [f32]) {
         for sample in buffer.iter_mut() {
-            *sample = self.next_sample();
+            self.next_sample();
+            *sample = self.current_level;
         }
     }
 
