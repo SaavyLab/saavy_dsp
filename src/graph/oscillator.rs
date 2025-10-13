@@ -1,6 +1,5 @@
-use crate::dsp::oscillator::OscillatorBlock;
-use crate::dsp::oscillator::OscillatorWaveform;
-use crate::dsp_fluent::voice_node::VoiceNode;
+use crate::dsp::oscillator::{OscillatorBlock, OscillatorWaveform};
+use crate::graph::node::GraphNode;
 
 pub struct OscNode {
     osc: OscillatorBlock,
@@ -16,9 +15,13 @@ impl OscNode {
         let osc = OscillatorBlock::new(freq, sr, OscillatorWaveform::Saw);
         Self { osc }
     }
+
+    pub fn set_frequency(&mut self, freq: f32) {
+        self.osc.set_frequency(freq);
+    }
 }
 
-impl VoiceNode for OscNode {
+impl GraphNode for OscNode {
     fn render_block(&mut self, out: &mut [f32]) {
         self.osc.render(out, 1.0);
     }
@@ -26,7 +29,7 @@ impl VoiceNode for OscNode {
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp_fluent::voice_node::RenderCtx;
+    use crate::graph::node::RenderCtx;
 
     use super::*;
     use std::f32::consts::TAU;

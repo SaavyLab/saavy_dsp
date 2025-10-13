@@ -1,3 +1,6 @@
+// Purpose - external interfaces, format conversions
+
+pub mod converter;
 pub mod midi;
 
 #[derive(Debug, Default)]

@@ -1,4 +1,4 @@
-use crate::{dsp_fluent::voice_node::{VoiceNode}, MAX_BLOCK_SIZE};
+use crate::{graph::node::GraphNode, MAX_BLOCK_SIZE};
 
 pub struct Amplify<N, M> {
     pub signal: N,
@@ -18,10 +18,10 @@ impl<N, M> Amplify<N, M> {
     }
 }
 
-impl<N, M> VoiceNode for Amplify<N, M>
+impl<N, M> GraphNode for Amplify<N, M>
 where
-    N: VoiceNode,
-    M: VoiceNode,
+    N: GraphNode,
+    M: GraphNode,
 {
     fn render_block(&mut self, out: &mut [f32]) {
         let frames = out.len();

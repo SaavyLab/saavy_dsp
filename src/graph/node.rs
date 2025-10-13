@@ -1,3 +1,5 @@
+/// Context passed to graph nodes during rendering
+/// Contains timing and sample rate information
 pub struct RenderCtx {
     pub sample_rate: f32,
     pub block_size: usize,
@@ -20,6 +22,8 @@ impl RenderCtx {
     }
 }
 
-pub trait VoiceNode {
+/// Core trait for audio processing graph nodes
+/// Any component that can process a block of audio samples implements this
+pub trait GraphNode {
     fn render_block(&mut self, out: &mut [f32]);
 }

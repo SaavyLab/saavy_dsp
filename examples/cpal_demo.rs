@@ -9,11 +9,11 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 #[cfg(feature = "cpal-demo")]
 use crossterm::{event, terminal};
 #[cfg(feature = "cpal-demo")]
-use saavy_dsp::dsp_fluent::{
-    envelope_node::{EnvelopeHandle, SharedEnvNode},
-    node_extension::NodeExt,
-    oscillator_node::OscNode,
-    voice_node::RenderCtx,
+use saavy_dsp::graph::{
+    envelope::{EnvelopeHandle, SharedEnvNode},
+    extensions::NodeExt,
+    node::RenderCtx,
+    oscillator::OscNode,
 };
 #[cfg(feature = "cpal-demo")]
 use std::time::Duration;
@@ -56,7 +56,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let stream = device.build_output_stream(
         &stream_config,
         move |data: &mut [f32], _| {
-            use saavy_dsp::{dsp_fluent::voice_node::VoiceNode, MAX_BLOCK_SIZE};
+            use saavy_dsp::{graph::node::GraphNode, MAX_BLOCK_SIZE};
 
             let mut guard = callback_state.lock().expect("engine mutex poisoned");
             let state = &mut *guard;
@@ -129,7 +129,7 @@ impl EngineState {
 }
 
 #[cfg(feature = "cpal-demo")]
-type SynthChain = saavy_dsp::dsp_fluent::amplify::Amplify<OscNode, SharedEnvNode>;
+type SynthChain = saavy_dsp::graph::amplify::Amplify<OscNode, SharedEnvNode>;
 
 #[cfg(feature = "cpal-demo")]
 fn control_loop(state: Arc<Mutex<EngineState>>) {
