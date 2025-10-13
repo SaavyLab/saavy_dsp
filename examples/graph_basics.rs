@@ -1,11 +1,7 @@
 /// Demonstrates the basic audio graph architecture
 /// Shows how to compose oscillators, envelopes, and modulation
-
 use saavy_dsp::graph::{
-    envelope::EnvNode,
-    extensions::NodeExt,
-    node::GraphNode,
-    oscillator::OscNode,
+    envelope::EnvNode, extensions::NodeExt, node::GraphNode, oscillator::OscNode,
 };
 
 fn main() {
@@ -19,7 +15,10 @@ fn main() {
     let mut osc = OscNode::sine(440.0, sample_rate);
     let mut buffer = vec![0.0; block_size];
     osc.render_block(&mut buffer);
-    println!("   Peak amplitude: {:.3}", buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs())));
+    println!(
+        "   Peak amplitude: {:.3}",
+        buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()))
+    );
 
     // Example 2: Oscillator with envelope
     println!("\n2. Sine wave with ADSR envelope");
@@ -29,7 +28,10 @@ fn main() {
 
     buffer.fill(0.0);
     enveloped_osc.render_block(&mut buffer);
-    println!("   Peak amplitude: {:.3}", buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs())));
+    println!(
+        "   Peak amplitude: {:.3}",
+        buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()))
+    );
     println!("   (Lower due to envelope attack ramp)");
 
     // Example 3: Ring modulation (two oscillators)
@@ -40,7 +42,10 @@ fn main() {
 
     buffer.fill(0.0);
     ring_mod.render_block(&mut buffer);
-    println!("   Peak amplitude: {:.3}", buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs())));
+    println!(
+        "   Peak amplitude: {:.3}",
+        buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()))
+    );
     println!("   (Creates tremolo/vibrato effect)");
 
     // Example 4: Show first few samples

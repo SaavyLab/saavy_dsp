@@ -35,6 +35,14 @@ impl PolySynth {
     }
 
     pub fn render_block(&mut self, out: &mut [f32]) {
+        // Safety: ensure buffer size doesn't exceed our temp buffer
+        debug_assert!(
+            out.len() <= MAX_BLOCK_SIZE,
+            "Buffer size {} exceeds MAX_BLOCK_SIZE {}",
+            out.len(),
+            MAX_BLOCK_SIZE
+        );
+
         // Process control messages
         while let Ok(msg) = self.rx.pop() {
             match msg {
