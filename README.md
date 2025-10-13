@@ -1,92 +1,162 @@
-# saavy dsp
+# saavy_dsp
 
 **low-level, realtime-safe dsp primitives for musical sound.** rust-first. allocation-free on the audio thread. dependency-light.
 
 ## overview
 
-saavy dsp provides oscillators, envelopes, filters, modulation, and a small voice engine you can compose into instruments or offline renders. it’s not a plugin, not a host, and not opinionated about your ui. just dsp.
+saavy_dsp provides oscillators, envelopes, and a graph-based architecture for building synthesizers. It's not a plugin, not a host, and not opinionated about your ui. just dsp.
 
 ## design principles
 
-* **rt-safe**: no locks, no allocs in `process()`. bounded work per block.
-* **deterministic**: sample-accurate event scheduling; snapshot tests for audio equivalence.
-* **composable**: small traits + plain structs; bring your own graph.
+* **rt-safe**: no locks, no allocs in audio callback. lock-free message passing via `rtrb`.
+* **deterministic**: sample-accurate rendering; regression tests for audio correctness.
+* **composable**: graph nodes + fluent API; build complex instruments from simple blocks.
 * **portable**: stable rust; runs anywhere you can run rust.
-* **austere**: few footguns, fewer dependencies.
+* **austere**: few footguns, minimal dependencies.
 
-## what’s here (mvp scope)
+## what's implemented (current state)
 
-* oscillators: sine, triangle, saw/square (bandlimited), noise
-* envelopes: adsr (segment-accurate), simple mseg (later)
-* filters: tpt svf (lp/bp/hp), gentle drive
-* modulation: lfo + envelope routing into osc/filter params
-* voices: fixed-pool polyphony + voice-steal policy
-* render paths: offline render; optional realtime demo (feature-gated)
+* **oscillators**: sine, saw, square, noise
+* **envelopes**: ADSR with lock-free control
+* **graph architecture**: composable audio processing nodes
+* **polyphony**: voice allocation, stealing, and mixing
+* **real-time audio**: cpal-based interactive demo
 
 ## quickstart
 
+### Basic Graph Composition
+
 ```rust
-use saavy_dsp::{Engine, Patch, RenderConfig};
+use saavy_dsp::graph::{
+    envelope::EnvNode,
+    extensions::NodeExt,
+    node::GraphNode,
+    oscillator::OscNode,
+};
 
 fn main() {
-    let sr = 48_000.0;
-    let mut eng = Engine::new(RenderConfig::new(sr, 128));
-    let patch = Patch::basic_synth(); // 2 osc -> svf -> amp
+    let sample_rate = 48_000.0;
 
-    let voice = eng.new_voice(&patch);
-    eng.note_on(voice, 60, 0.8);   // middle c
-    let mut left = vec![0.0f32; sr as usize]; // 1 second mono
-    eng.render(&mut left);
+    // Create graph nodes
+    let mut env = EnvNode::with_params(sample_rate, 0.01, 0.1, 0.7, 0.3);
+    env.note_on();
+    let mut synth = OscNode::sine(440.0, sample_rate).amplify(env);
 
-    // write wav, compare hash, do science
+    // Render audio
+    let mut buffer = vec![0.0; 128];
+    synth.render_block(&mut buffer);
 }
 ```
 
-## features (planned, not promised)
+### Polyphonic Synthesis
 
-* wavetables + oversampling/anti-aliasing paths
-* waveshaping + simple delay/chorus
-* automation lanes + tempo sync
-* golden-audio regression harness
+```rust
+use rtrb::RingBuffer;
+use saavy_dsp::synth::{message::SynthMessage, poly::PolySynth};
+
+fn main() {
+    let sample_rate = 48_000.0;
+    let (mut tx, rx) = RingBuffer::<SynthMessage>::new(64);
+
+    let mut synth = PolySynth::new(
+        sample_rate,
+        8,    // max voices
+        rx,
+        0.01, // attack
+        0.1,  // decay
+        0.7,  // sustain
+        0.3,  // release
+    );
+
+    // Send MIDI events
+    let _ = tx.push(SynthMessage::NoteOn { note: 60, velocity: 100 });
+
+    // Render
+    let mut buffer = vec![0.0; 256];
+    synth.render_block(&mut buffer);
+}
+```
 
 ## examples
 
-* `examples/offline_bounce.rs` — render a patch to a wav (no io deps)
-* `examples/cpal_demo.rs` — optional sound-out (`--features cpal-demo`)
+* `examples/fluent_demo.rs` — basic graph composition
+* `examples/graph_basics.rs` — multiple graph patterns
+* `examples/envelope_demo.rs` — ADSR phase visualization
+* `examples/polyphony_demo.rs` — voice management and stealing
+* `examples/cpal_demo.rs` — real-time interactive audio (`--features cpal-demo`)
+
+Run with:
+```bash
+cargo run --example fluent_demo
+cargo run --features cpal-demo --example cpal_demo
+```
 
 ## cargo features
 
-* `cpal-demo` — builds the realtime demo via `cpal`
-* `serde` — enable (de)serialization for patches
-* `analysis` — extras used by tests/benches (e.g., `rustfft`); not in core
+* `default = []` — minimal build, no optional features
+* `cpal-demo` — builds the realtime demo via `cpal` and `crossterm`
+* `serde` — enable (de)serialization for future preset system
+* `analysis` — `rustfft` for future analysis tools
+
+## architecture
+
+```
+src/
+├── dsp/          # Low-level primitives (Envelope, OscillatorBlock)
+├── graph/        # Composable graph nodes (OscNode, EnvNode, Amplify)
+├── synth/        # Voice management (Voice, PolySynth, message types)
+└── io/           # MIDI conversion, audio I/O types
+```
+
+### Key Concepts
+
+**Graph Nodes**: Building blocks that implement `GraphNode` trait
+- `OscNode` - Oscillator (sine, saw, square, noise)
+- `EnvNode` / `SharedEnvNode` - ADSR envelope
+- `Amplify` - Multiplies two signals (ring modulation)
+
+**Polyphony**: Fixed voice pool with automatic allocation
+- Voice stealing (oldest releasing voice)
+- Lock-free MIDI message queue
+- Efficient mixing of active voices
 
 ## testing
 
-* unit + property tests for primitives
-* audio snapshot tests (goldens) to guard regressions
-* benchmarks via `criterion` (gated, non-rt thread)
+```bash
+cargo test                    # Run all tests
+cargo test --lib              # Unit tests only
+cargo test --test '*'         # Integration tests only
+```
+
+Current test coverage:
+* Unit tests for oscillator phase wrapping and sine accuracy
+* Integration tests for PolySynth (rendering, voice management, note off)
 
 ## status
 
-early. the core is being carved with testable slices first; api surface may shift.
+**Current milestone**: ADSR envelopes + polyphony ✅
+
+**Next up**:
+- Filters (TPT SVF: lowpass, highpass, bandpass)
+- LFO modulation
+- MIDI keyboard input via `midir`
+
+See [WHY.md](WHY.md) for project vision and learning goals.
+
+## northstar: fluent API (future)
+
+This is the aspirational syntax we're building towards:
+
+```rust
+// Not yet implemented, but coming soon
+let synth = OscNode::sine(440.0, sr)
+    .amplify(envelope)
+    .through(filter)   // <- Not implemented yet
+    .mix(0.5);         // <- Not implemented yet
+```
+
+Currently working: `.amplify()` combinator
 
 ## license
 
-mit/apl2. pick your poison.
-
-## northstar compositional syntax
-```rust
-// Define building blocks
-let osc = Oscillator::sine(440.0);
-let env = Envelope::adsr(0.01, 0.1, 0.7, 0.3);
-let filter = Filter::lowpass(1000.0, 0.7);
-
-// Compose them
-let synth = osc
-    .amplify(env)
-    .through(filter)
-    .mix(0.5);
-
-// Render
-synth.render(&mut buffer);
-```
+[MIT](LICENSE)

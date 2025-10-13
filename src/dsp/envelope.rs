@@ -85,7 +85,6 @@ impl Envelope {
     pub fn note_on(&mut self) {
         self.state = EnvelopeState::Attack;
         self.release_progress = 0;
-        self.current_level = 0.0;
     }
 
     pub fn note_off(&mut self) {
