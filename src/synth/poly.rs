@@ -1,29 +1,38 @@
 use rtrb::Consumer;
 
 use crate::{
-    synth::{message::SynthMessage, voice::Voice},
+    synth::{
+        factory::VoiceFactory,
+        message::SynthMessage,
+        voice::{Voice, VoiceState},
+    },
     MAX_BLOCK_SIZE,
 };
 
-pub struct PolySynth {
-    voices: Vec<Voice>,
+/// Polyphonic synthesizer - manages multiple voices of any type
+pub struct PolySynth<F: VoiceFactory> {
+    voices: Vec<Voice<F::Voice>>,
     rx: Consumer<SynthMessage>,
     temp_buffer: Vec<f32>,
     frame_counter: u64,
 }
 
-impl PolySynth {
+impl<F: VoiceFactory> PolySynth<F> {
+    /// Create a new polyphonic synth
+    ///
+    /// # Arguments
+    /// * `sample_rate` - Audio sample rate (e.g., 48000.0)
+    /// * `max_voices` - Maximum number of simultaneous voices
+    /// * `factory` - Factory that creates voices with your sound design
+    /// * `rx` - Message queue for MIDI events
     pub fn new(
         sample_rate: f32,
         max_voices: usize,
+        factory: F,
         rx: Consumer<SynthMessage>,
-        attack: f32,
-        decay: f32,
-        sustain: f32,
-        release: f32,
     ) -> Self {
         let voices = (0..max_voices)
-            .map(|_| Voice::new(sample_rate, attack, decay, sustain, release))
+            .map(|_| Voice::new(factory.create_voice(), sample_rate))
             .collect();
 
         Self {
@@ -84,9 +93,7 @@ impl PolySynth {
         self.frame_counter += out.len() as u64;
     }
 
-    fn allocate_voice(&mut self) -> Option<&mut Voice> {
-        use crate::synth::voice::VoiceState;
-
+    fn allocate_voice(&mut self) -> Option<&mut Voice<F::Voice>> {
         // First pass: find free voice index
         let free_idx = self.voices.iter().position(|v| v.is_free());
         if let Some(idx) = free_idx {
@@ -105,7 +112,7 @@ impl PolySynth {
         steal_idx.map(|idx| &mut self.voices[idx])
     }
 
-    fn find_voice(&mut self, note: u8) -> Option<&mut Voice> {
+    fn find_voice(&mut self, note: u8) -> Option<&mut Voice<F::Voice>> {
         self.voices
             .iter_mut()
             .find(|v| v.note() == note && v.is_active())

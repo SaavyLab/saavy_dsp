@@ -1,7 +1,9 @@
 /// Demonstrates ADSR envelope behavior
 /// Shows attack, decay, sustain, and release phases
+use rtrb::RingBuffer;
 use saavy_dsp::{
-    graph::{envelope::EnvNode, extensions::NodeExt, node::GraphNode, oscillator::OscNode},
+    graph::{envelope::EnvNode, extensions::NodeExt, oscillator::OscNode},
+    synth::{message::SynthMessage, poly::PolySynth},
     MAX_BLOCK_SIZE,
 };
 
@@ -9,6 +11,7 @@ fn main() {
     println!("=== ADSR Envelope Demo ===\n");
 
     let sample_rate = 48_000.0;
+    let max_voices = 1; // Only need one voice for this demo
     let attack = 0.1; // 100ms
     let decay = 0.1; // 100ms
     let sustain = 0.5; // 50% level
@@ -20,10 +23,24 @@ fn main() {
     println!("  Sustain: {:.0}%", sustain * 100.0);
     println!("  Release: {:.0}ms\n", release * 1000.0);
 
-    // Create synth with envelope
-    let mut env = EnvNode::with_params(sample_rate, attack, decay, sustain, release);
-    env.note_on();
-    let mut synth = OscNode::sine(440.0, sample_rate).amplify(env);
+    // Create message queue
+    let (mut tx, rx) = RingBuffer::<SynthMessage>::new(64);
+
+    // Design patch
+    let factory = || {
+        let osc = OscNode::sine();
+        let env = EnvNode::adsr(attack, decay, sustain, release);
+        osc.amplify(env)
+    };
+
+    // Create synth
+    let mut synth = PolySynth::new(sample_rate, max_voices, factory, rx);
+
+    // Trigger note on!
+    let _ = tx.push(SynthMessage::NoteOn {
+        note: 60, // Middle C
+        velocity: 100,
+    });
 
     // Calculate phase durations
     let attack_samples = (attack * sample_rate) as usize;
@@ -62,10 +79,6 @@ fn main() {
     render_phase("Attack:", attack_samples);
     render_phase("Decay:", decay_samples);
     render_phase("Sustain:", sustain_samples);
-
-    println!("\n⚠ Note: This demo uses EnvNode (non-shared)");
-    println!("   For runtime control (note_on/off), use SharedEnvNode + EnvelopeHandle");
-    println!("   See cpal_demo.rs for an example with real-time control");
 
     println!("\n=== Envelope Behavior ===");
     println!("• Attack:  ramps from 0.0 → 1.0");

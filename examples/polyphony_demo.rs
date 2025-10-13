@@ -1,7 +1,10 @@
 /// Demonstrates polyphonic synthesis without real-time audio
 /// Shows voice allocation, note triggering, and mixing
 use rtrb::RingBuffer;
-use saavy_dsp::synth::{message::SynthMessage, poly::PolySynth};
+use saavy_dsp::{
+    graph::{envelope::EnvNode, extensions::NodeExt, oscillator::OscNode},
+    synth::{message::SynthMessage, poly::PolySynth},
+};
 
 fn main() {
     println!("=== Polyphony Demo (Offline) ===\n");
@@ -13,16 +16,20 @@ fn main() {
     // Create message queue
     let (mut tx, rx) = RingBuffer::<SynthMessage>::new(64);
 
-    // Create polyphonic synth with 4 voices
-    let mut poly = PolySynth::new(
-        sample_rate,
-        max_voices,
-        rx,
-        0.05, // attack: 50ms
-        0.1,  // decay: 100ms
-        0.6,  // sustain: 60%
-        0.2,  // release: 200ms
-    );
+    // Design the patch (sound)
+    let attack = 0.05;
+    let decay = 0.1;
+    let sustain = 0.6;
+    let release = 0.2;
+    let factory = || {
+        // Oscillator frequency will be set by Voice based on MIDI note
+        let osc = OscNode::sine();
+        let env = EnvNode::adsr(attack, decay, sustain, release);
+        osc.amplify(env)
+    };
+
+    // Create polyphonic synth with that patch
+    let mut poly = PolySynth::new(sample_rate, max_voices, factory, rx);
 
     println!("Created PolySynth with {} voices\n", max_voices);
 

@@ -10,13 +10,14 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::{event, terminal};
 #[cfg(feature = "cpal-demo")]
 use saavy_dsp::graph::{
-    envelope::{EnvelopeHandle, SharedEnvNode},
+    envelope::EnvNode,
     extensions::NodeExt,
-    node::RenderCtx,
+    node::{GraphNode, RenderCtx},
     oscillator::OscNode,
 };
 #[cfg(feature = "cpal-demo")]
 use std::time::Duration;
+
 #[cfg(feature = "cpal-demo")]
 fn main() {
     if let Err(err) = run() {
@@ -56,7 +57,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let stream = device.build_output_stream(
         &stream_config,
         move |data: &mut [f32], _| {
-            use saavy_dsp::{graph::node::GraphNode, MAX_BLOCK_SIZE};
+            use saavy_dsp::MAX_BLOCK_SIZE;
 
             let mut guard = callback_state.lock().expect("engine mutex poisoned");
             let state = &mut *guard;
@@ -70,10 +71,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             debug_assert!(frames <= MAX_BLOCK_SIZE);
             let buf = &mut state.buffer[..frames];
             buf.fill(0.0);
-            state.ctx.block_size = frames;
-            state.synth.render_block(buf);
-            state.ctx.advance(frames);
 
+            // Create RenderCtx with current note (A3 = 57, 220Hz)
+            let ctx = RenderCtx::from_note(state.sample_rate, 57, 100.0);
+            state.synth.render_block(buf, &ctx);
+
+            // Copy mono to all channels
             for frame in 0..frames {
                 let sample = buf[frame];
                 for channel in 0..state.channels {
@@ -96,10 +99,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(feature = "cpal-demo")]
 struct EngineState {
     synth: SynthChain,
-    ctx: RenderCtx,
+    sample_rate: f32,
     buffer: Vec<f32>,
     channels: usize,
-    gate: EnvelopeHandle,
     gate_on: bool,
 }
 
@@ -113,23 +115,23 @@ impl EngineState {
         let decay = 0.8;
         let sustain = 0.2;
         let release = 0.3;
-        let (env_node, gate) =
-            SharedEnvNode::adsr(sample_rate as f32, attack, decay, sustain, release);
-        let synth = OscNode::sine(220.0, sample_rate as f32).amplify(env_node);
+
+        // Create synth with envelope
+        let env_node = EnvNode::adsr(attack, decay, sustain, release);
+        let synth = OscNode::sine().amplify(env_node);
 
         Self {
             synth,
-            ctx: RenderCtx::new(sample_rate as f32, block_size as usize),
+            sample_rate: sample_rate as f32,
             buffer: vec![0.0; MAX_BLOCK_SIZE],
             channels: channel_count,
-            gate,
             gate_on: false,
         }
     }
 }
 
 #[cfg(feature = "cpal-demo")]
-type SynthChain = saavy_dsp::graph::amplify::Amplify<OscNode, SharedEnvNode>;
+type SynthChain = saavy_dsp::graph::amplify::Amplify<OscNode, EnvNode>;
 
 #[cfg(feature = "cpal-demo")]
 fn control_loop(state: Arc<Mutex<EngineState>>) {
@@ -147,16 +149,21 @@ fn control_loop(state: Arc<Mutex<EngineState>>) {
                         match key.kind {
                             KeyEventKind::Press => {
                                 if guard.gate_on {
-                                    guard.gate.note_off();
+                                    // Note off
+                                    let ctx = RenderCtx::from_note(guard.sample_rate, 57, 100.0);
+                                    guard.synth.note_off(&ctx);
                                     guard.gate_on = false;
                                 } else {
-                                    guard.gate.note_on();
+                                    // Note on
+                                    let ctx = RenderCtx::from_note(guard.sample_rate, 57, 100.0);
+                                    guard.synth.note_on(&ctx);
                                     guard.gate_on = true;
                                 }
                             }
                             KeyEventKind::Release => {
                                 if guard.gate_on {
-                                    guard.gate.note_off();
+                                    let ctx = RenderCtx::from_note(guard.sample_rate, 57, 100.0);
+                                    guard.synth.note_off(&ctx);
                                     guard.gate_on = false;
                                 }
                             }
@@ -166,7 +173,8 @@ fn control_loop(state: Arc<Mutex<EngineState>>) {
                     KeyCode::Esc => {
                         let mut guard = state.lock().expect("engine mutex poisoned");
                         if guard.gate_on {
-                            guard.gate.note_off();
+                            let ctx = RenderCtx::from_note(guard.sample_rate, 57, 100.0);
+                            guard.synth.note_off(&ctx);
                             guard.gate_on = false;
                         }
                         break;

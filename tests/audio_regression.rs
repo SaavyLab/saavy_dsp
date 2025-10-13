@@ -5,7 +5,10 @@
 /// - Output is in valid range [-1, 1]
 /// - Output contains actual signal (not silence)
 use rtrb::RingBuffer;
-use saavy_dsp::synth::{message::SynthMessage, poly::PolySynth};
+use saavy_dsp::{
+    graph::{envelope::EnvNode, extensions::NodeExt, oscillator::OscNode},
+    synth::{message::SynthMessage, poly::PolySynth},
+};
 
 #[test]
 fn polysynth_renders_valid_audio() {
@@ -13,17 +16,14 @@ fn polysynth_renders_valid_audio() {
     let max_voices = 4;
     let block_size = 256;
 
-    // Create polyphonic synth
+    // Create polyphonic synth with factory
     let (mut tx, rx) = RingBuffer::<SynthMessage>::new(64);
-    let mut synth = PolySynth::new(
-        sample_rate,
-        max_voices,
-        rx,
-        0.01, // attack
-        0.1,  // decay
-        0.7,  // sustain
-        0.3,  // release
-    );
+    let factory = || {
+        let osc = OscNode::sine();
+        let env = EnvNode::adsr(0.01, 0.1, 0.7, 0.3);
+        osc.amplify(env)
+    };
+    let mut synth = PolySynth::new(sample_rate, max_voices, factory, rx);
 
     // Trigger a note
     let _ = tx.push(SynthMessage::NoteOn {
@@ -61,7 +61,12 @@ fn polysynth_handles_multiple_voices() {
     let block_size = 256;
 
     let (mut tx, rx) = RingBuffer::<SynthMessage>::new(64);
-    let mut synth = PolySynth::new(sample_rate, max_voices, rx, 0.01, 0.1, 0.7, 0.3);
+    let factory = || {
+        let osc = OscNode::sine();
+        let env = EnvNode::adsr(0.01, 0.1, 0.7, 0.3);
+        osc.amplify(env)
+    };
+    let mut synth = PolySynth::new(sample_rate, max_voices, factory, rx);
 
     // Play a chord (3 notes)
     let _ = tx.push(SynthMessage::NoteOn {
@@ -96,7 +101,12 @@ fn polysynth_note_off_works() {
     let block_size = 256;
 
     let (mut tx, rx) = RingBuffer::<SynthMessage>::new(64);
-    let mut synth = PolySynth::new(sample_rate, max_voices, rx, 0.01, 0.1, 0.7, 0.3);
+    let factory = || {
+        let osc = OscNode::sine();
+        let env = EnvNode::adsr(0.01, 0.1, 0.7, 0.3);
+        osc.amplify(env)
+    };
+    let mut synth = PolySynth::new(sample_rate, max_voices, factory, rx);
 
     // Note on
     let _ = tx.push(SynthMessage::NoteOn {

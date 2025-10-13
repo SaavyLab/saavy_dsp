@@ -1,12 +1,4 @@
-use crate::{
-    graph::{
-        amplify::Amplify,
-        envelope::{EnvelopeHandle, SharedEnvNode},
-        node::GraphNode,
-        oscillator::OscNode,
-    },
-    io::converter::midi_note_to_freq,
-};
+use crate::graph::node::{GraphNode, RenderCtx};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VoiceState {
@@ -15,31 +7,25 @@ pub enum VoiceState {
     Releasing, // Key released, envelope in release phase
 }
 
-pub struct Voice {
+/// A single voice that can play any GraphNode
+pub struct Voice<T: GraphNode> {
     note: u8,
     velocity: u8,
     state: VoiceState,
     age: u64,
-    chain: VoiceChain,
-    env_handle: EnvelopeHandle,
+    sample_rate: f32,
+    graph: T,
 }
 
-type VoiceChain = Amplify<OscNode, SharedEnvNode>;
-
-impl Voice {
-    pub fn new(sample_rate: f32, attack: f32, decay: f32, sustain: f32, release: f32) -> Self {
-        let (env_node, env_handle) =
-            SharedEnvNode::adsr(sample_rate, attack, decay, sustain, release);
-        let osc = OscNode::sine(440.0, sample_rate);
-        let chain = Amplify::new(osc, env_node);
-
+impl<T: GraphNode> Voice<T> {
+    pub fn new(graph: T, sample_rate: f32) -> Self {
         Self {
             note: 0,
             velocity: 0,
             state: VoiceState::Free,
             age: 0,
-            chain,
-            env_handle,
+            sample_rate,
+            graph,
         }
     }
 
@@ -49,30 +35,31 @@ impl Voice {
         self.state = VoiceState::Active;
         self.age = age;
 
-        let freq = midi_note_to_freq(note);
-        self.chain.signal.set_frequency(freq);
-        self.env_handle.note_on();
+        // Trigger note-on event in the graph
+        let ctx = RenderCtx::from_note(self.sample_rate, note, velocity as f32);
+        self.graph.note_on(&ctx);
     }
 
     pub fn release(&mut self) {
         if self.state == VoiceState::Active {
             self.state = VoiceState::Releasing;
-            self.env_handle.note_off();
+
+            // Trigger note-off event in the graph
+            let ctx = RenderCtx::from_note(self.sample_rate, self.note, self.velocity as f32);
+            self.graph.note_off(&ctx);
         }
     }
 
     pub fn render(&mut self, out: &mut [f32]) {
-        self.chain.render_block(out);
+        // Create context from voice state (MIDI note → frequency)
+        let ctx = RenderCtx::from_note(self.sample_rate, self.note, self.velocity as f32);
+
+        self.graph.render_block(out, &ctx);
 
         // If voice is releasing and envelope has finished, mark as free
-        if self.state == VoiceState::Releasing && !self.chain.modulator.is_active() {
+        if self.state == VoiceState::Releasing && !self.graph.is_active() {
             self.free();
         }
-    }
-
-    /// Check if the envelope for this voice is still active
-    pub fn is_envelope_active(&self) -> bool {
-        self.chain.modulator.is_active()
     }
 
     pub fn is_free(&self) -> bool {
