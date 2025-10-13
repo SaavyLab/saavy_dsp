@@ -17,6 +17,7 @@ cpal-demo = ["dep:cpal", "dep:crossterm"]
 analysis = ["dep:rustfft"]
 
 [dependencies]
+rtrb = { version = "0.3.2" }
 cpal = { version = "0.15", optional = true }
 rustfft = { version = "6", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }

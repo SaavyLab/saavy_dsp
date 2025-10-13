@@ -14,8 +14,12 @@ impl RenderCtx {
             dt: 1.0 / sample_rate,
         }
     }
+
+    pub fn advance(&mut self, frames: usize) {
+        self.time += self.dt as f64 * frames as f64;
+    }
 }
 
 pub trait VoiceNode {
-    fn render_block(&mut self, ctx: &mut RenderCtx, out: &mut [f32]);
+    fn render_block(&mut self, out: &mut [f32]);
 }

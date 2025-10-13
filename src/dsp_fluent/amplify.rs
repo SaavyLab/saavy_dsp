@@ -1,4 +1,4 @@
-use crate::{dsp_fluent::voice_node::{RenderCtx, VoiceNode}, MAX_BLOCK_SIZE};
+use crate::{dsp_fluent::voice_node::{VoiceNode}, MAX_BLOCK_SIZE};
 
 pub struct Amplify<N, M> {
     pub signal: N,
@@ -23,7 +23,7 @@ where
     N: VoiceNode,
     M: VoiceNode,
 {
-    fn render_block(&mut self, ctx: &mut RenderCtx, out: &mut [f32]) {
+    fn render_block(&mut self, out: &mut [f32]) {
         let frames = out.len();
         debug_assert!(frames <= MAX_BLOCK_SIZE);
 
@@ -32,8 +32,8 @@ where
         carrier.fill(0.0);
         gain.fill(0.0);
 
-        self.signal.render_block(ctx, carrier);
-        self.modulator.render_block(ctx, gain);
+        self.signal.render_block(carrier);
+        self.modulator.render_block(gain);
 
         for (o, (c, g)) in out.iter_mut().zip(carrier.iter().zip(gain.iter())) {
             *o = c * g;

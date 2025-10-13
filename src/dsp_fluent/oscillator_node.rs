@@ -1,6 +1,5 @@
 use crate::dsp::oscillator::OscillatorBlock;
 use crate::dsp::oscillator::OscillatorWaveform;
-use crate::dsp_fluent::voice_node::RenderCtx;
 use crate::dsp_fluent::voice_node::VoiceNode;
 
 pub struct OscNode {
@@ -20,14 +19,15 @@ impl OscNode {
 }
 
 impl VoiceNode for OscNode {
-    fn render_block(&mut self, ctx: &mut RenderCtx, out: &mut [f32]) {
+    fn render_block(&mut self, out: &mut [f32]) {
         self.osc.render(out, 1.0);
-        ctx.time += ctx.dt as f64 * out.len() as f64;
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::dsp_fluent::voice_node::RenderCtx;
+
     use super::*;
     use std::f32::consts::TAU;
 
@@ -43,7 +43,8 @@ mod tests {
         // .through(FilterNode::lowpass(...));
 
         let mut buffer = vec![0.0f32; block_size];
-        synth.render_block(&mut ctx, &mut buffer);
+        synth.render_block(&mut buffer);
+        ctx.advance(buffer.len());
 
         // sample n should be sin(2pi f n / sr)
         let sample_index = 12;

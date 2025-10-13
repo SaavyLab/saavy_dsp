@@ -1,13 +1,13 @@
-use std::sync::{Arc, Mutex};
+use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::dsp::envelope::AdsrEnvelope;
+use crate::dsp::envelope::Envelope;
 use crate::dsp_fluent::voice_node::VoiceNode;
 
-pub struct AdsrEnvNode {
-    env: AdsrEnvelope,
+pub struct EnvNode {
+    env: Envelope,
 }
 
-impl AdsrEnvNode {
+impl EnvNode {
     pub fn note_on(&mut self) {
         self.env.note_on();
     }
@@ -17,7 +17,7 @@ impl AdsrEnvNode {
     }
 
     pub fn new(sample_rate: f32) -> Self {
-        let env = AdsrEnvelope::new(sample_rate);
+        let env = Envelope::new(sample_rate);
         Self { env }
     }
 
@@ -28,65 +28,68 @@ impl AdsrEnvNode {
         sustain: f32,
         release: f32,
     ) -> Self {
-        let env = AdsrEnvelope::with_params(sample_rate, attack, decay, sustain, release);
+        let env = Envelope::adsr(sample_rate, attack, decay, sustain, release);
         Self { env }
     }
 }
 
-impl VoiceNode for AdsrEnvNode {
-    fn render_block(&mut self, ctx: &mut super::voice_node::RenderCtx, out: &mut [f32]) {
+impl VoiceNode for EnvNode {
+    fn render_block(&mut self, out: &mut [f32]) {
         self.env.render(out);
-        ctx.time += ctx.dt as f64 * out.len() as f64;
     }
 }
 
-#[derive(Clone)]
+pub enum EnvelopeMessage {
+  NoteOn,
+  NoteOff,
+}
+
 pub struct EnvelopeHandle {
-    inner: Arc<Mutex<AdsrEnvelope>>,
+  tx: Producer<EnvelopeMessage>
+}
+
+pub struct SharedEnvNode {
+  env: Envelope,
+  rx: Consumer<EnvelopeMessage>,
 }
 
 impl EnvelopeHandle {
-    pub fn note_on(&self) {
-        if let Ok(mut env) = self.inner.lock() {
-            env.note_on();
-        }
+    pub fn note_on(&mut self) {
+      let _ = self.tx.push(EnvelopeMessage::NoteOn);
     }
 
-    pub fn note_off(&self) {
-        if let Ok(mut env) = self.inner.lock() {
-            env.note_off();
-        }
+    pub fn note_off(&mut self) {
+      let _ = self.tx.push(EnvelopeMessage::NoteOff);
     }
 }
 
-pub struct SharedAdsrEnvNode {
-    env: Arc<Mutex<AdsrEnvelope>>,
+impl SharedEnvNode {
+  pub fn adsr(
+    sample_rate: f32,
+    attack: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+  ) -> (Self, EnvelopeHandle) {
+    let env = Envelope::adsr(sample_rate, attack, decay, sustain, release);
+    let (tx, rx) = RingBuffer::<EnvelopeMessage>::new(64);
+
+    let handle = EnvelopeHandle { tx };
+    let node = Self { env, rx };
+
+    (node, handle)
+  }
 }
 
-impl SharedAdsrEnvNode {
-    pub fn with_params(
-        sample_rate: f32,
-        attack: f32,
-        decay: f32,
-        sustain: f32,
-        release: f32,
-    ) -> (Self, EnvelopeHandle) {
-        let env = AdsrEnvelope::with_params(sample_rate, attack, decay, sustain, release);
-        let arc = Arc::new(Mutex::new(env));
-        let handle = EnvelopeHandle {
-            inner: Arc::clone(&arc),
-        };
-        (Self { env: arc }, handle)
-    }
-}
-
-impl VoiceNode for SharedAdsrEnvNode {
-    fn render_block(&mut self, ctx: &mut super::voice_node::RenderCtx, out: &mut [f32]) {
-        if let Ok(mut env) = self.env.lock() {
-            env.render(out);
-        } else {
-            out.fill(0.0);
+impl VoiceNode for SharedEnvNode {
+    fn render_block(&mut self, out: &mut [f32]) {
+      while let Ok(msg) = self.rx.pop() {
+        match msg {
+          EnvelopeMessage::NoteOff => self.env.note_off(),
+          EnvelopeMessage::NoteOn => self.env.note_on(),
         }
-        ctx.time += ctx.dt as f64 * out.len() as f64;
+      }
+
+      self.env.render(out);
     }
 }

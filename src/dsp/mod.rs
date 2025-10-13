@@ -2,12 +2,12 @@ pub mod envelope;
 pub mod filter;
 pub mod oscillator;
 
-use envelope::AdsrEnvelope;
+use envelope::Envelope;
 use filter::FilterBlock;
 use oscillator::OscillatorBlock;
 
 pub struct VoiceChain {
     pub oscillator: OscillatorBlock,
-    pub envelope: AdsrEnvelope,
+    pub envelope: Envelope,
     pub filter: FilterBlock,
 }

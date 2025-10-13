@@ -10,7 +10,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::{event, terminal};
 #[cfg(feature = "cpal-demo")]
 use saavy_dsp::dsp_fluent::{
-    envelope_node::{EnvelopeHandle, SharedAdsrEnvNode},
+    envelope_node::{EnvelopeHandle, SharedEnvNode},
     node_extension::NodeExt,
     oscillator_node::OscNode,
     voice_node::RenderCtx,
@@ -71,8 +71,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let buf = &mut state.buffer[..frames];
             buf.fill(0.0);
             state.ctx.block_size = frames;
-
-            state.synth.render_block(&mut state.ctx, buf);
+            state.synth.render_block(buf);
+            state.ctx.advance(frames);
 
             for frame in 0..frames {
                 let sample = buf[frame];
@@ -114,7 +114,7 @@ impl EngineState {
         let sustain = 0.2;
         let release = 0.3;
         let (env_node, gate) =
-            SharedAdsrEnvNode::with_params(sample_rate as f32, attack, decay, sustain, release);
+            SharedEnvNode::adsr(sample_rate as f32, attack, decay, sustain, release);
         let synth = OscNode::sine(220.0, sample_rate as f32).amplify(env_node);
 
         Self {
@@ -129,7 +129,7 @@ impl EngineState {
 }
 
 #[cfg(feature = "cpal-demo")]
-type SynthChain = saavy_dsp::dsp_fluent::amplify::Amplify<OscNode, SharedAdsrEnvNode>;
+type SynthChain = saavy_dsp::dsp_fluent::amplify::Amplify<OscNode, SharedEnvNode>;
 
 #[cfg(feature = "cpal-demo")]
 fn control_loop(state: Arc<Mutex<EngineState>>) {
