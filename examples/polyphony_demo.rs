@@ -2,10 +2,7 @@
 /// Shows voice allocation, note triggering, and mixing
 
 use rtrb::RingBuffer;
-use saavy_dsp::{
-    synth::{message::SynthMessage, poly::PolySynth},
-    MAX_BLOCK_SIZE,
-};
+use saavy_dsp::synth::{message::SynthMessage, poly::PolySynth};
 
 fn main() {
     println!("=== Polyphony Demo (Offline) ===\n");
