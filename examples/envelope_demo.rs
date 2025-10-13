@@ -1,7 +1,8 @@
 /// Demonstrates ADSR envelope behavior
 /// Shows attack, decay, sustain, and release phases
-use saavy_dsp::graph::{
-    envelope::EnvNode, extensions::NodeExt, node::GraphNode, oscillator::OscNode,
+use saavy_dsp::{
+    graph::{envelope::EnvNode, extensions::NodeExt, node::GraphNode, oscillator::OscNode},
+    MAX_BLOCK_SIZE,
 };
 
 fn main() {
@@ -24,45 +25,44 @@ fn main() {
     env.note_on();
     let mut synth = OscNode::sine(440.0, sample_rate).amplify(env);
 
-    // Simulate phases
+    // Calculate phase durations
     let attack_samples = (attack * sample_rate) as usize;
     let decay_samples = (decay * sample_rate) as usize;
     let sustain_samples = (0.5 * sample_rate) as usize; // Hold for 500ms
-    let _release_samples = (release * sample_rate) as usize; // Not used in this demo
 
     println!("Phase timeline:");
+    println!("  (Rendering in chunks of {} samples)", MAX_BLOCK_SIZE);
+    println!();
 
-    // Attack phase
-    let mut buffer = vec![0.0; attack_samples];
-    synth.render_block(&mut buffer);
-    let attack_peak = buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
-    println!(
-        "  Attack:  {:6} samples, peak amplitude: {:.3}",
-        attack_samples, attack_peak
-    );
+    // Helper function to render in chunks
+    let mut render_phase = |name: &str, total_samples: usize| -> (f32, f32) {
+        let mut all_samples = Vec::new();
+        let mut remaining = total_samples;
 
-    // Decay phase
-    buffer.resize(decay_samples, 0.0);
-    buffer.fill(0.0);
-    synth.render_block(&mut buffer);
-    let decay_end = buffer[buffer.len() - 1].abs();
-    println!(
-        "  Decay:   {:6} samples, end amplitude:  {:.3}",
-        decay_samples, decay_end
-    );
+        while remaining > 0 {
+            let chunk_size = remaining.min(MAX_BLOCK_SIZE);
+            let mut buffer = vec![0.0; chunk_size];
+            synth.render_block(&mut buffer);
+            all_samples.extend_from_slice(&buffer);
+            remaining -= chunk_size;
+        }
 
-    // Sustain phase
-    buffer.resize(sustain_samples, 0.0);
-    buffer.fill(0.0);
-    synth.render_block(&mut buffer);
-    let sustain_avg = buffer.iter().map(|&x| x.abs()).sum::<f32>() / buffer.len() as f32;
-    println!(
-        "  Sustain: {:6} samples, avg amplitude:  {:.3}",
-        sustain_samples, sustain_avg
-    );
+        let peak = all_samples.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
+        let avg = all_samples.iter().map(|&x| x.abs()).sum::<f32>() / all_samples.len() as f32;
 
-    // Trigger release (note_off not available on non-shared EnvNode)
-    // In real usage, you'd use SharedEnvNode with EnvelopeHandle
+        println!(
+            "  {:8} {:6} samples, peak: {:.3}, avg: {:.3}",
+            name, total_samples, peak, avg
+        );
+
+        (peak, avg)
+    };
+
+    // Render each phase
+    render_phase("Attack:", attack_samples);
+    render_phase("Decay:", decay_samples);
+    render_phase("Sustain:", sustain_samples);
+
     println!("\n⚠ Note: This demo uses EnvNode (non-shared)");
     println!("   For runtime control (note_on/off), use SharedEnvNode + EnvelopeHandle");
     println!("   See cpal_demo.rs for an example with real-time control");
@@ -72,5 +72,9 @@ fn main() {
     println!("• Decay:   ramps from 1.0 → sustain level");
     println!("• Sustain: holds at sustain level until note_off");
     println!("• Release: ramps from current level → 0.0");
-    println!("\nEnvelope is re-trigger safe: can call note_on during release");
+    println!(
+        "\n• Graph nodes limited to MAX_BLOCK_SIZE ({}) samples per render",
+        MAX_BLOCK_SIZE
+    );
+    println!("• For longer durations, render in multiple chunks");
 }
