@@ -46,6 +46,6 @@ impl<N: GraphNode, M: GraphNode> GraphNode for Amplify<N, M> {
     }
 
     fn is_active(&self) -> bool {
-        self.modulator.is_active()
+        self.modulator.is_active() | self.signal.is_active()
     }
 }
