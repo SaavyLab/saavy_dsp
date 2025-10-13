@@ -32,7 +32,7 @@ fn main() {
     let attack_samples = (attack * sample_rate) as usize;
     let decay_samples = (decay * sample_rate) as usize;
     let sustain_samples = (0.5 * sample_rate) as usize; // Hold for 500ms
-    let release_samples = (release * sample_rate) as usize;
+    let _release_samples = (release * sample_rate) as usize; // Not used in this demo
 
     println!("Phase timeline:");
 
