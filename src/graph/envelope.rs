@@ -80,6 +80,11 @@ impl SharedEnvNode {
 
         (node, handle)
     }
+
+    /// Check if envelope is currently active (not Idle)
+    pub fn is_active(&self) -> bool {
+        self.env.is_active()
+    }
 }
 
 impl GraphNode for SharedEnvNode {

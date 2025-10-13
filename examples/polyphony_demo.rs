@@ -1,6 +1,5 @@
 /// Demonstrates polyphonic synthesis without real-time audio
 /// Shows voice allocation, note triggering, and mixing
-
 use rtrb::RingBuffer;
 use saavy_dsp::synth::{message::SynthMessage, poly::PolySynth};
 
@@ -49,9 +48,7 @@ fn main() {
     let mut buffer = vec![0.0; block_size];
     poly.render_block(&mut buffer);
 
-    let peak = buffer
-        .iter()
-        .fold(0.0f32, |acc, &x| acc.max(x.abs()));
+    let peak = buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
     println!("\nAfter first render:");
     println!("  Active voices: 3");
     println!("  Peak amplitude: {:.3}", peak);
@@ -65,9 +62,7 @@ fn main() {
 
     buffer.fill(0.0);
     poly.render_block(&mut buffer);
-    let peak = buffer
-        .iter()
-        .fold(0.0f32, |acc, &x| acc.max(x.abs()));
+    let peak = buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
     println!("  Active voices: 4 (max)");
     println!("  Peak amplitude: {:.3}", peak);
 

@@ -63,6 +63,16 @@ impl Voice {
 
     pub fn render(&mut self, out: &mut [f32]) {
         self.chain.render_block(out);
+
+        // If voice is releasing and envelope has finished, mark as free
+        if self.state == VoiceState::Releasing && !self.chain.modulator.is_active() {
+            self.free();
+        }
+    }
+
+    /// Check if the envelope for this voice is still active
+    pub fn is_envelope_active(&self) -> bool {
+        self.chain.modulator.is_active()
     }
 
     pub fn is_free(&self) -> bool {

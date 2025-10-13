@@ -1,21 +1,17 @@
 /// Demonstrates ADSR envelope behavior
 /// Shows attack, decay, sustain, and release phases
-
 use saavy_dsp::graph::{
-    envelope::EnvNode,
-    extensions::NodeExt,
-    node::GraphNode,
-    oscillator::OscNode,
+    envelope::EnvNode, extensions::NodeExt, node::GraphNode, oscillator::OscNode,
 };
 
 fn main() {
     println!("=== ADSR Envelope Demo ===\n");
 
     let sample_rate = 48_000.0;
-    let attack = 0.1;   // 100ms
-    let decay = 0.1;    // 100ms
-    let sustain = 0.5;  // 50% level
-    let release = 0.2;  // 200ms
+    let attack = 0.1; // 100ms
+    let decay = 0.1; // 100ms
+    let sustain = 0.5; // 50% level
+    let release = 0.2; // 200ms
 
     println!("Envelope parameters:");
     println!("  Attack:  {:.0}ms", attack * 1000.0);
@@ -40,21 +36,30 @@ fn main() {
     let mut buffer = vec![0.0; attack_samples];
     synth.render_block(&mut buffer);
     let attack_peak = buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
-    println!("  Attack:  {:6} samples, peak amplitude: {:.3}", attack_samples, attack_peak);
+    println!(
+        "  Attack:  {:6} samples, peak amplitude: {:.3}",
+        attack_samples, attack_peak
+    );
 
     // Decay phase
     buffer.resize(decay_samples, 0.0);
     buffer.fill(0.0);
     synth.render_block(&mut buffer);
     let decay_end = buffer[buffer.len() - 1].abs();
-    println!("  Decay:   {:6} samples, end amplitude:  {:.3}", decay_samples, decay_end);
+    println!(
+        "  Decay:   {:6} samples, end amplitude:  {:.3}",
+        decay_samples, decay_end
+    );
 
     // Sustain phase
     buffer.resize(sustain_samples, 0.0);
     buffer.fill(0.0);
     synth.render_block(&mut buffer);
     let sustain_avg = buffer.iter().map(|&x| x.abs()).sum::<f32>() / buffer.len() as f32;
-    println!("  Sustain: {:6} samples, avg amplitude:  {:.3}", sustain_samples, sustain_avg);
+    println!(
+        "  Sustain: {:6} samples, avg amplitude:  {:.3}",
+        sustain_samples, sustain_avg
+    );
 
     // Trigger release (note_off not available on non-shared EnvNode)
     // In real usage, you'd use SharedEnvNode with EnvelopeHandle

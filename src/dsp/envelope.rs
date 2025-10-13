@@ -85,6 +85,8 @@ impl Envelope {
     pub fn note_on(&mut self) {
         self.state = EnvelopeState::Attack;
         self.release_progress = 0;
+        // intentionally not setting current_level to 0 here
+        // gives legato effect (eventually configurable)
     }
 
     pub fn note_off(&mut self) {
