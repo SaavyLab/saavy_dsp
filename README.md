@@ -1,18 +1,25 @@
 # saavy_dsp
 
-**low-level, realtime-safe dsp primitives for musical sound.** rust-first. allocation-free on the audio thread. dependency-light.
+**a friendly rust library for making musical sounds from scratch.**
 
-## overview
+## what is this?
 
-saavy_dsp provides oscillators, envelopes, and a graph-based architecture for building synthesizers. It's not a plugin, not a host, and not opinionated about your ui. just dsp.
+saavy_dsp gives you oscillators, envelopes, and filters to build synthesizers. It's not trying to be the most powerful DSP library—it's trying to be the most *approachable* one. Start with presets, tweak until it sounds good, and don't worry about the math unless you want to.
+
+Good for:
+- **Learning synthesis** without drowning in academic papers
+- **Prototyping sounds** quickly in Rust
+- **Building instruments** for games, apps, or VST plugins
+- **Having fun** making weird noises
+
+Not trying to replace: Max/MSP, SuperCollider, or production-grade synth engines. This is the *friendly* option.
 
 ## design principles
 
-* **rt-safe**: no locks, no allocs in audio callback. lock-free message passing via `rtrb`.
-* **deterministic**: sample-accurate rendering; regression tests for audio correctness.
-* **composable**: graph nodes + fluent API; build complex instruments from simple blocks.
-* **portable**: stable rust; runs anywhere you can run rust.
-* **austere**: few footguns, minimal dependencies.
+* **approachable**: presets and examples get you making sound in minutes
+* **composable**: chain simple blocks into complex instruments
+* **real-time safe**: no locks, no allocs on the audio thread
+* **portable**: runs anywhere Rust runs (including embedded, eventually)
 
 ## what's implemented (current state)
 
@@ -20,6 +27,7 @@ saavy_dsp provides oscillators, envelopes, and a graph-based architecture for bu
 * **envelopes**: ADSR with lock-free control
 * **graph architecture**: composable audio processing nodes
 * **polyphony**: voice allocation, stealing, and mixing
+* **sequencing**: musical timing with proper time signatures, no floats
 * **real-time audio**: cpal-based interactive demo
 
 ## quickstart
@@ -57,29 +65,26 @@ fn main() {
 }
 ```
 
-### Direct Frequency (Metronome/Drums)
+### Musical Sequencing
 
 ```rust
-use saavy_dsp::graph::{
-    envelope::EnvNode,
-    extensions::NodeExt,
-    node::{GraphNode, RenderCtx},
-    oscillator::OscNode,
-};
+use saavy_dsp::sequencing::{Duration, Sequence};
 
 fn main() {
-    let sample_rate = 48_000.0;
+    // Create a rhythm: "1, and-of-2, 4"
+    let seq = Sequence::new(480) // 480 ppq (standard MIDI timing)
+        .note(Duration::EIGHTH).with_note(36)       // Kick on 1
+        .rest(Duration::EIGHTH)                      // and
+        .rest(Duration::EIGHTH)                      // 2
+        .note(Duration::EIGHTH).with_note(38)       // Snare on and-of-2
+        .rest(Duration::QUARTER)                     // 3
+        .note(Duration::QUARTER).with_note(36)      // Kick on 4
+        .build()
+        .unwrap();
 
-    // Create a click sound
-    let mut click = OscNode::sine().amplify(EnvNode::adsr(0.001, 0.01, 0.0, 0.02));
-
-    // Use direct frequency (not MIDI notes)
-    let ctx = RenderCtx::from_freq(sample_rate, 2500.0, 1.0);
-    click.note_on(&ctx);
-
-    // Render
-    let mut buffer = vec![0.0; 128];
-    click.render_block(&mut buffer, &ctx);
+    // All timing is integer ticks—no float drift
+    // Supports compound meters (6/8, 9/8), tuplets, dotted notes
+    // Bar validation catches rhythm errors at build time
 }
 ```
 
@@ -138,30 +143,17 @@ Current test coverage:
 * Unit tests for oscillator phase wrapping and sine accuracy
 * Integration tests for PolySynth (rendering, voice management, note off)
 
-## status
+## what's next?
 
-**Current milestone**: ADSR envelopes + polyphony ✅
+The roadmap is loose. Current focus:
+- **Filters** (lowpass, highpass, bandpass) — shape the tone
+- **Presets** — factory sounds you can load and tweak
+- **LFOs** — wobble things over time
+- **Sequencing/timing** — play patterns, not just single notes
 
-**Next up**:
-- Filters (TPT SVF: lowpass, highpass, bandpass)
-- LFO modulation
-- MIDI keyboard input via `midir`
+Long-term dreams: wavetables, effects (delay/reverb), better examples, maybe a fun terminal UI.
 
-See [WHY.md](WHY.md) for project vision and learning goals.
-
-## northstar: fluent API (future)
-
-This is the aspirational syntax we're building towards:
-
-```rust
-// Not yet implemented, but coming soon
-let synth = OscNode::sine(440.0, sr)
-    .amplify(envelope)
-    .through(filter)   // <- Not implemented yet
-    .mix(0.5);         // <- Not implemented yet
-```
-
-Currently working: `.amplify()` combinator
+See [WHY.md](WHY.md) if you're curious about the "why" behind this project.
 
 ## license
 
