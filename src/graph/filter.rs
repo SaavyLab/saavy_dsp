@@ -16,6 +16,18 @@ impl FilterNode {
 
         FilterNode { filter: filter }
     }
+
+    pub fn bandpass(cutoff_hz: f32) -> Self {
+        let filter = SVFilter::bandpass(cutoff_hz);
+
+        FilterNode { filter: filter }
+    }
+
+    pub fn notch(cutoff_hz: f32) -> Self {
+        let filter = SVFilter::notch(cutoff_hz);
+
+        FilterNode { filter: filter }
+    }
 }
 
 impl GraphNode for FilterNode {
