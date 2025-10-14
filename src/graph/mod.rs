@@ -4,5 +4,7 @@
 pub mod amplify;
 pub mod envelope;
 pub mod extensions;
+pub mod filter;
 pub mod node;
 pub mod oscillator;
+pub mod through;

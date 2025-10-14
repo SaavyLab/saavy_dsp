@@ -1,22 +1,20 @@
-#[cfg(feature = "cpal-demo")]
-use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "cpal-demo")]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 #[cfg(feature = "cpal-demo")]
-use crossterm::event::{Event, KeyCode, KeyEventKind};
-#[cfg(feature = "cpal-demo")]
-use crossterm::{event, terminal};
-#[cfg(feature = "cpal-demo")]
-use saavy_dsp::graph::{
-    envelope::EnvNode,
-    extensions::NodeExt,
-    node::{GraphNode, RenderCtx},
-    oscillator::OscNode,
+use crossterm::{
+    event::{self, Event, KeyCode, KeyEventKind},
+    terminal,
 };
 #[cfg(feature = "cpal-demo")]
-use std::time::Duration;
+use rtrb::RingBuffer;
+#[cfg(feature = "cpal-demo")]
+use saavy_dsp::{
+    graph::{envelope::EnvNode, extensions::NodeExt, filter::FilterNode, oscillator::OscNode},
+    synth::{message::SynthMessage, poly::PolySynth},
+    MAX_BLOCK_SIZE,
+};
 
 #[cfg(feature = "cpal-demo")]
 fn main() {
@@ -27,61 +25,63 @@ fn main() {
 
 #[cfg(feature = "cpal-demo")]
 fn run() -> Result<(), Box<dyn std::error::Error>> {
+    // Setup audio device
     let host = cpal::default_host();
     let device = host
         .default_output_device()
         .ok_or_else(|| "no default output device available")?;
+    let config = device.default_output_config()?;
 
-    let supported_config = device.default_output_config()?;
-    if supported_config.sample_format() != cpal::SampleFormat::F32 {
+    if config.sample_format() != cpal::SampleFormat::F32 {
         return Err("cpal demo currently supports only f32 output".into());
     }
 
-    let mut stream_config = supported_config.config();
-    let block_size = 256u32;
-    stream_config.buffer_size = cpal::BufferSize::Fixed(block_size);
+    let sample_rate = config.sample_rate().0 as f32;
+    let channels = config.channels() as usize;
 
-    let channels = stream_config.channels as usize;
-    let sample_rate = stream_config.sample_rate.0;
+    // Create synth with message queue
+    let (mut tx, rx) = RingBuffer::<SynthMessage>::new(64);
 
-    let state = Arc::new(Mutex::new(EngineState::new(
-        sample_rate,
-        block_size,
-        channels,
-    )));
-    let callback_state = Arc::clone(&state);
-    let control_state = Arc::clone(&state);
+    let factory = || {
+        let osc = OscNode::sine();
+        let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
+        let filter = FilterNode::lowpass(500.0);
+        osc.amplify(env).through(filter)
+    };
 
-    let control_handle = std::thread::spawn(move || control_loop(control_state));
+    let mut synth = PolySynth::new(sample_rate, 4, factory, rx);
+    let mut buffer = vec![0.0; MAX_BLOCK_SIZE];
 
+    // Audio callback - reads from synth
     let stream = device.build_output_stream(
-        &stream_config,
+        &config.into(),
         move |data: &mut [f32], _| {
-            use saavy_dsp::MAX_BLOCK_SIZE;
+            let total_frames = data.len() / channels;
+            let mut frames_written = 0;
 
-            let mut guard = callback_state.lock().expect("engine mutex poisoned");
-            let state = &mut *guard;
+            // Process in chunks if requested size exceeds buffer
+            while frames_written < total_frames {
+                let frames_remaining = total_frames - frames_written;
+                let frames_to_render = frames_remaining.min(MAX_BLOCK_SIZE);
 
-            let frames = if state.channels == 0 {
-                0
-            } else {
-                data.len() / state.channels
-            };
+                let buf = &mut buffer[..frames_to_render];
+                synth.render_block(buf);
 
-            debug_assert!(frames <= MAX_BLOCK_SIZE);
-            let buf = &mut state.buffer[..frames];
-            buf.fill(0.0);
-
-            // Create RenderCtx with current note (A3 = 57, 220Hz)
-            let ctx = RenderCtx::from_note(state.sample_rate, 57, 100.0);
-            state.synth.render_block(buf, &ctx);
-
-            // Copy mono to all channels
-            for frame in 0..frames {
-                let sample = buf[frame];
-                for channel in 0..state.channels {
-                    data[frame * state.channels + channel] = sample;
+                // Debug: check if we're getting audio
+                let peak = buf.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
+                if peak > 0.001 {
+                    eprintln!("Audio peak: {:.3}", peak);
                 }
+
+                // Copy mono to all channels
+                let output_offset = frames_written * channels;
+                for (i, &sample) in buf.iter().enumerate() {
+                    for ch in 0..channels {
+                        data[output_offset + i * channels + ch] = sample;
+                    }
+                }
+
+                frames_written += frames_to_render;
             }
         },
         move |err| eprintln!("Stream error: {err}"),
@@ -90,106 +90,51 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     stream.play()?;
     println!("Space: gate on/off, Esc: quit");
-    let _ = control_handle.join();
-    drop(stream);
-    drop(state);
+
+    // Main thread - keyboard input, writes to tx
+    control_loop(&mut tx)?;
+
     Ok(())
 }
 
 #[cfg(feature = "cpal-demo")]
-struct EngineState {
-    synth: SynthChain,
-    sample_rate: f32,
-    buffer: Vec<f32>,
-    channels: usize,
-    gate_on: bool,
-}
-
-#[cfg(feature = "cpal-demo")]
-impl EngineState {
-    fn new(sample_rate: u32, block_size: u32, channels: usize) -> Self {
-        use saavy_dsp::MAX_BLOCK_SIZE;
-
-        let channel_count = channels.max(1);
-        let attack = 0.6;
-        let decay = 0.8;
-        let sustain = 0.2;
-        let release = 0.3;
-
-        // Create synth with envelope
-        let env_node = EnvNode::adsr(attack, decay, sustain, release);
-        let synth = OscNode::sine().amplify(env_node);
-
-        Self {
-            synth,
-            sample_rate: sample_rate as f32,
-            buffer: vec![0.0; MAX_BLOCK_SIZE],
-            channels: channel_count,
-            gate_on: false,
-        }
-    }
-}
-
-#[cfg(feature = "cpal-demo")]
-type SynthChain = saavy_dsp::graph::amplify::Amplify<OscNode, EnvNode>;
-
-#[cfg(feature = "cpal-demo")]
-fn control_loop(state: Arc<Mutex<EngineState>>) {
-    if terminal::enable_raw_mode().is_err() {
-        eprintln!("failed to enable raw mode; controls disabled");
-        return;
-    }
+fn control_loop(tx: &mut rtrb::Producer<SynthMessage>) -> Result<(), Box<dyn std::error::Error>> {
+    terminal::enable_raw_mode()?;
+    let mut gate_on = false;
 
     loop {
-        if event::poll(Duration::from_millis(20)).unwrap_or(false) {
-            match event::read() {
-                Ok(Event::Key(key)) => match key.code {
-                    KeyCode::Char(' ') => {
-                        let mut guard = state.lock().expect("engine mutex poisoned");
-                        match key.kind {
-                            KeyEventKind::Press => {
-                                if guard.gate_on {
-                                    // Note off
-                                    let ctx = RenderCtx::from_note(guard.sample_rate, 57, 100.0);
-                                    guard.synth.note_off(&ctx);
-                                    guard.gate_on = false;
-                                } else {
-                                    // Note on
-                                    let ctx = RenderCtx::from_note(guard.sample_rate, 57, 100.0);
-                                    guard.synth.note_on(&ctx);
-                                    guard.gate_on = true;
-                                }
-                            }
-                            KeyEventKind::Release => {
-                                if guard.gate_on {
-                                    let ctx = RenderCtx::from_note(guard.sample_rate, 57, 100.0);
-                                    guard.synth.note_off(&ctx);
-                                    guard.gate_on = false;
-                                }
-                            }
-                            KeyEventKind::Repeat => {}
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Char(' ') => match key.kind {
+                        KeyEventKind::Press if !gate_on => {
+                            eprintln!("Sending NoteOn");
+                            let _ = tx.push(SynthMessage::NoteOn {
+                                note: 57, // A3
+                                velocity: 100,
+                            });
+                            gate_on = true;
                         }
-                    }
-                    KeyCode::Esc => {
-                        let mut guard = state.lock().expect("engine mutex poisoned");
-                        if guard.gate_on {
-                            let ctx = RenderCtx::from_note(guard.sample_rate, 57, 100.0);
-                            guard.synth.note_off(&ctx);
-                            guard.gate_on = false;
+                        KeyEventKind::Release if gate_on => {
+                            eprintln!("Sending NoteOff");
+                            let _ = tx.push(SynthMessage::NoteOff {
+                                note: 57,
+                                velocity: 0,
+                            });
+                            gate_on = false;
                         }
-                        break;
-                    }
+                        _ => {}
+                    },
+                    KeyCode::Esc => break,
                     _ => {}
-                },
-                Ok(Event::Mouse(_)) | Ok(Event::Resize(_, _)) => {}
-                Ok(_) => break,
-                Err(_) => break,
+                }
             }
         }
     }
 
-    let _ = terminal::disable_raw_mode();
+    terminal::disable_raw_mode()?;
     println!("\nExiting...");
+    Ok(())
 }
 
 #[cfg(not(feature = "cpal-demo"))]

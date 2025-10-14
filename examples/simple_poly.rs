@@ -1,7 +1,7 @@
 /// Simple polyphony example showing the new RenderCtx architecture
 use rtrb::RingBuffer;
 use saavy_dsp::{
-    graph::{envelope::EnvNode, extensions::NodeExt, oscillator::OscNode},
+    graph::{envelope::EnvNode, extensions::NodeExt, filter::FilterNode, oscillator::OscNode},
     synth::{message::SynthMessage, poly::PolySynth},
 };
 
@@ -22,8 +22,10 @@ fn main() {
         // ADSR envelope: 50ms attack, 100ms decay, 60% sustain, 200ms release
         let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
 
+        let lowpass = FilterNode::lowpass(500.0);
+        
         // Connect oscillator through envelope
-        osc.amplify(env)
+        osc.amplify(env).through(lowpass)
     };
 
     // Step 2: Create polyphonic synth with that patch
