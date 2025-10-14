@@ -1,3 +1,5 @@
+use std::intrinsics::saturating_add;
+
 use super::duration::Duration;
 use super::time_signature::TimeSignature;
 
@@ -46,7 +48,7 @@ impl Sequence {
         self.events
             .iter()
             .filter(move |e| {
-                let actual_offset = (e.tick_offset as i32 + e.offset_ticks) as u32;
+                let actual_offset = ((e.tick_offset as i32).saturating_add(e.offset_ticks)) as u32;
                 actual_offset >= start_tick && actual_offset < end_tick
             })
     }
