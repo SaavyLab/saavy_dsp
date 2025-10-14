@@ -27,7 +27,7 @@ pub struct SVFilter {
 
     cutoff_hz: f32,
     resonance: f32,
-    filter_type: FilterType
+    filter_type: FilterType,
 }
 
 impl SVFilter {
@@ -96,7 +96,7 @@ impl SVFilter {
                 FilterType::LowPass => outputs.lowpass,
                 FilterType::HighPass => outputs.highpass,
                 FilterType::BandPass => outputs.bandpass,
-                FilterType::Notch => outputs.notch
+                FilterType::Notch => outputs.notch,
             }
         }
     }

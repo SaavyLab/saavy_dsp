@@ -1,12 +1,6 @@
-
 #[cfg(feature = "cpal-demo")]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
-#[cfg(feature = "cpal-demo")]
-use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
-    terminal,
-};
 #[cfg(feature = "cpal-demo")]
 use rtrb::RingBuffer;
 #[cfg(feature = "cpal-demo")]
@@ -15,6 +9,8 @@ use saavy_dsp::{
     synth::{message::SynthMessage, poly::PolySynth},
     MAX_BLOCK_SIZE,
 };
+#[cfg(feature = "cpal-demo")]
+use std::{thread, time::Duration};
 
 #[cfg(feature = "cpal-demo")]
 fn main() {
@@ -25,7 +21,6 @@ fn main() {
 
 #[cfg(feature = "cpal-demo")]
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    // Setup audio device
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -39,27 +34,25 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let sample_rate = config.sample_rate().0 as f32;
     let channels = config.channels() as usize;
 
-    // Create synth with message queue
     let (mut tx, rx) = RingBuffer::<SynthMessage>::new(64);
 
     let factory = || {
         let osc = OscNode::sine();
         let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
-        let filter = FilterNode::lowpass(500.0);
-        osc.amplify(env).through(filter)
+        let lowpass = FilterNode::lowpass(250.0);
+        let highpass = FilterNode::highpass(600.0);
+        osc.amplify(env).through(lowpass).through(highpass)
     };
 
     let mut synth = PolySynth::new(sample_rate, 4, factory, rx);
     let mut buffer = vec![0.0; MAX_BLOCK_SIZE];
 
-    // Audio callback - reads from synth
     let stream = device.build_output_stream(
         &config.into(),
         move |data: &mut [f32], _| {
             let total_frames = data.len() / channels;
             let mut frames_written = 0;
 
-            // Process in chunks if requested size exceeds buffer
             while frames_written < total_frames {
                 let frames_remaining = total_frames - frames_written;
                 let frames_to_render = frames_remaining.min(MAX_BLOCK_SIZE);
@@ -67,7 +60,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let buf = &mut buffer[..frames_to_render];
                 synth.render_block(buf);
 
-                // Copy mono to all channels
+                // Debug helper: log when we have audible signal
+                let peak = buf.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
+                if peak > 0.001 {
+                    eprintln!("Audio peak: {:.3}", peak);
+                }
+
                 let output_offset = frames_written * channels;
                 for (i, &sample) in buf.iter().enumerate() {
                     for ch in 0..channels {
@@ -83,46 +81,33 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     stream.play()?;
-    println!("Space: gate on/off, Esc: quit");
+    println!("Playing repeating C-major arpeggio (C4–E4–G4–C5) at ~120 BPM. Press Ctrl+C to stop.");
 
-    // Main thread - keyboard input, writes to tx
-    control_loop(&mut tx)?;
+    play_arpeggio(&mut tx);
 
     Ok(())
 }
 
 #[cfg(feature = "cpal-demo")]
-fn control_loop(tx: &mut rtrb::Producer<SynthMessage>) -> Result<(), Box<dyn std::error::Error>> {
-    terminal::enable_raw_mode()?;
+fn play_arpeggio(tx: &mut rtrb::Producer<SynthMessage>) {
+    let notes = [60, 64, 67, 72]; // MIDI: C4, E4, G4, C5
+    let note_duration = Duration::from_millis(450); // ≈ quarter note at 120 BPM
+    let gap = Duration::from_millis(50); // short release gap between notes
+
     loop {
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char(' ') => match key.kind {
-                        KeyEventKind::Press => {
-                            let _ = tx.push(SynthMessage::NoteOn {
-                                note: 57, // A3
-                                velocity: 100,
-                            });
-                        }
-                        KeyEventKind::Release => {
-                            let _ = tx.push(SynthMessage::NoteOff {
-                                note: 57,
-                                velocity: 0,
-                            });
-                        }
-                        KeyEventKind::Repeat => {}
-                    },
-                    KeyCode::Esc => break,
-                    _ => {}
-                }
-            }
+        for &note in &notes {
+            eprintln!("NoteOn {note}");
+            let _ = tx.push(SynthMessage::NoteOn {
+                note,
+                velocity: 100,
+            });
+            thread::sleep(note_duration);
+
+            eprintln!("NoteOff {note}");
+            let _ = tx.push(SynthMessage::NoteOff { note, velocity: 0 });
+            thread::sleep(gap);
         }
     }
-
-    terminal::disable_raw_mode()?;
-    println!("\nExiting...");
-    Ok(())
 }
 
 #[cfg(not(feature = "cpal-demo"))]

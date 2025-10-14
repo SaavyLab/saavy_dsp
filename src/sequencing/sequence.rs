@@ -42,13 +42,15 @@ impl Sequence {
     }
 
     /// Get all events that should trigger between two tick positions
-    pub fn events_between(&self, start_tick: u32, end_tick: u32) -> impl Iterator<Item = &SequenceEvent> {
-        self.events
-            .iter()
-            .filter(move |e| {
-                let actual_offset = ((e.tick_offset as i32).saturating_add(e.offset_ticks)) as u32;
-                actual_offset >= start_tick && actual_offset < end_tick
-            })
+    pub fn events_between(
+        &self,
+        start_tick: u32,
+        end_tick: u32,
+    ) -> impl Iterator<Item = &SequenceEvent> {
+        self.events.iter().filter(move |e| {
+            let actual_offset = ((e.tick_offset as i32).saturating_add(e.offset_ticks)) as u32;
+            actual_offset >= start_tick && actual_offset < end_tick
+        })
     }
 
     /// Get the total duration of this sequence in ticks

@@ -23,7 +23,7 @@ fn main() {
         let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
 
         let lowpass = FilterNode::lowpass(500.0);
-        
+
         // Connect oscillator through envelope
         osc.amplify(env).through(lowpass)
     };
