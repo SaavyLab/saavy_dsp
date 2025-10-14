@@ -67,12 +67,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let buf = &mut buffer[..frames_to_render];
                 synth.render_block(buf);
 
-                // Debug: check if we're getting audio
-                let peak = buf.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
-                if peak > 0.001 {
-                    eprintln!("Audio peak: {:.3}", peak);
-                }
-
                 // Copy mono to all channels
                 let output_offset = frames_written * channels;
                 for (i, &sample) in buf.iter().enumerate() {
@@ -100,30 +94,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(feature = "cpal-demo")]
 fn control_loop(tx: &mut rtrb::Producer<SynthMessage>) -> Result<(), Box<dyn std::error::Error>> {
     terminal::enable_raw_mode()?;
-    let mut gate_on = false;
-
     loop {
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 match key.code {
                     KeyCode::Char(' ') => match key.kind {
-                        KeyEventKind::Press if !gate_on => {
-                            eprintln!("Sending NoteOn");
+                        KeyEventKind::Press => {
                             let _ = tx.push(SynthMessage::NoteOn {
                                 note: 57, // A3
                                 velocity: 100,
                             });
-                            gate_on = true;
                         }
-                        KeyEventKind::Release if gate_on => {
-                            eprintln!("Sending NoteOff");
+                        KeyEventKind::Release => {
                             let _ = tx.push(SynthMessage::NoteOff {
                                 note: 57,
                                 velocity: 0,
                             });
-                            gate_on = false;
                         }
-                        _ => {}
+                        KeyEventKind::Repeat => {}
                     },
                     KeyCode::Esc => break,
                     _ => {}
