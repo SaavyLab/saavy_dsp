@@ -140,3 +140,163 @@ impl Modulatable for DelayNode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::node::RenderCtx;
+
+    #[test]
+    fn test_delay_node_basic() {
+        let mut delay = DelayNode::new(10.0, 0.0, 1.0); // 10ms, no feedback, wet only
+        let sample_rate = 48_000.0;
+        let ctx = RenderCtx::from_freq(sample_rate, 440.0, 1.0);
+
+        // 10ms at 48kHz = 480 samples delay
+        let mut buffer = vec![0.0; 1000];
+        buffer[0] = 1.0; // Impulse
+
+        delay.render_block(&mut buffer, &ctx);
+
+        // Should see impulse delayed by ~480 samples
+        assert!(buffer[0].abs() < 0.1, "First sample should be mostly dry (but wet only, so ~0)");
+
+        // Peak should be around sample 480
+        let peak_pos = buffer.iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+            .map(|(i, _)| i)
+            .unwrap();
+
+        assert!((peak_pos as i32 - 480).abs() < 50,
+                "Peak should be near 480 samples, got {}", peak_pos);
+    }
+
+    #[test]
+    fn test_delay_node_feedback() {
+        let mut delay = DelayNode::new(5.0, 0.5, 1.0); // 5ms, 50% feedback
+        let sample_rate = 48_000.0;
+        let ctx = RenderCtx::from_freq(sample_rate, 440.0, 1.0);
+
+        let mut buffer = vec![0.0; 2000];
+        buffer[0] = 1.0; // Impulse
+
+        delay.render_block(&mut buffer, &ctx);
+
+        // With feedback, we should see multiple echoes
+        // Count peaks above threshold
+        let peaks: Vec<_> = buffer.iter()
+            .enumerate()
+            .filter(|(_, &v)| v > 0.2)
+            .collect();
+
+        assert!(peaks.len() > 1, "Feedback should create multiple echoes, got {} peaks", peaks.len());
+    }
+
+    #[test]
+    fn test_delay_node_dry_wet_mix() {
+        let sample_rate = 48_000.0;
+        let ctx = RenderCtx::from_freq(sample_rate, 440.0, 1.0);
+
+        // Dry only (mix = 0.0)
+        let mut delay_dry = DelayNode::new(10.0, 0.0, 0.0);
+        let mut buffer_dry = vec![1.0; 100];
+        delay_dry.render_block(&mut buffer_dry, &ctx);
+        assert!((buffer_dry[0] - 1.0).abs() < 0.01, "Dry only should pass signal unchanged");
+
+        // Wet only (mix = 1.0)
+        let mut delay_wet = DelayNode::new(10.0, 0.0, 1.0);
+        let mut buffer_wet = vec![1.0; 100];
+        delay_wet.render_block(&mut buffer_wet, &ctx);
+        assert!(buffer_wet[0].abs() < 0.1, "Wet only should be delayed (near zero initially)");
+
+        // 50/50 mix
+        let mut delay_mix = DelayNode::new(10.0, 0.0, 0.5);
+        let mut buffer_mix = vec![1.0; 100];
+        delay_mix.render_block(&mut buffer_mix, &ctx);
+        assert!(buffer_mix[0] > 0.4 && buffer_mix[0] < 0.6,
+                "50/50 mix should blend dry and wet");
+    }
+
+    #[test]
+    fn test_delay_node_modulatable() {
+        let mut delay = DelayNode::new(100.0, 0.3, 0.5);
+
+        // Test get_param
+        assert!((delay.get_param(DelayParam::DelayTime) - 100.0).abs() < 0.1);
+        assert!((delay.get_param(DelayParam::Feedback) - 0.3).abs() < 0.01);
+        assert!((delay.get_param(DelayParam::Mix) - 0.5).abs() < 0.01);
+
+        // Test apply_modulation
+        delay.apply_modulation(DelayParam::DelayTime, 100.0, 50.0);
+        assert!((delay.delay_ms - 150.0).abs() < 0.1);
+
+        delay.apply_modulation(DelayParam::Feedback, 0.3, 0.2);
+        assert!((delay.feedback - 0.5).abs() < 0.01);
+
+        delay.apply_modulation(DelayParam::Mix, 0.5, 0.3);
+        assert!((delay.mix - 0.8).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_delay_node_clamping() {
+        let mut delay = DelayNode::new(100.0, 0.0, 0.0);
+
+        // Test feedback clamping (should not exceed 0.95)
+        delay.apply_modulation(DelayParam::Feedback, 0.5, 1.0);
+        assert!(delay.feedback <= 0.95, "Feedback should clamp to 0.95");
+
+        // Test mix clamping
+        delay.apply_modulation(DelayParam::Mix, 0.5, 1.0);
+        assert!(delay.mix <= 1.0, "Mix should clamp to 1.0");
+
+        delay.apply_modulation(DelayParam::Mix, 0.5, -1.0);
+        assert!(delay.mix >= 0.0, "Mix should clamp to 0.0");
+
+        // Test delay time clamping
+        delay.apply_modulation(DelayParam::DelayTime, 100.0, -200.0);
+        assert!(delay.delay_ms >= 0.1, "Delay time should clamp to minimum");
+    }
+
+    #[test]
+    fn test_delay_node_no_runaway() {
+        // High feedback should not cause runaway (exploding values)
+        let mut delay = DelayNode::new(5.0, 0.9, 1.0);
+        let sample_rate = 48_000.0;
+        let ctx = RenderCtx::from_freq(sample_rate, 440.0, 1.0);
+
+        let mut buffer = vec![0.0; 5000];
+        buffer[0] = 1.0;
+
+        delay.render_block(&mut buffer, &ctx);
+
+        // All samples should be finite and reasonable
+        for (i, &sample) in buffer.iter().enumerate() {
+            assert!(sample.is_finite(), "Sample {} is not finite", i);
+            assert!(sample.abs() < 10.0, "Sample {} is too large: {}", i, sample);
+        }
+    }
+
+    #[test]
+    fn test_delay_node_smoothing() {
+        // Test that delay time changes are smoothed across blocks
+        let mut delay = DelayNode::new(10.0, 0.0, 1.0);
+        let sample_rate = 48_000.0;
+        let ctx = RenderCtx::from_freq(sample_rate, 440.0, 1.0);
+
+        // First block
+        let mut buffer1 = vec![1.0; 512];
+        delay.render_block(&mut buffer1, &ctx);
+
+        // Change delay time and render second block
+        delay.delay_ms = 20.0;
+        let mut buffer2 = vec![1.0; 512];
+        delay.render_block(&mut buffer2, &ctx);
+
+        // Should smoothly transition without clicks
+        // (Hard to test directly, but should not panic and produce finite values)
+        for &sample in buffer2.iter() {
+            assert!(sample.is_finite(), "Smoothing should produce finite values");
+        }
+    }
+}
