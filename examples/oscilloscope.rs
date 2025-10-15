@@ -1,9 +1,15 @@
-use color_eyre::{Result};
+use color_eyre::Result;
 use crossterm::event::{self, Event};
 use ratatui::{
-    layout::{Constraint, Layout}, style::{Color, Style}, text::Line, widgets::{Axis, Block, Borders, Chart, Dataset, Paragraph}, DefaultTerminal, Frame
+    layout::{Constraint, Layout},
+    style::{Color, Style},
+    symbols,
+    text::Line,
+    widgets::{Axis, BarChart, Block, Borders, Chart, Dataset, GraphType, Paragraph},
+    DefaultTerminal, Frame,
 };
 use rtrb::RingBuffer;
+use rustfft::{num_complex::Complex, FftPlanner};
 use saavy_dsp::{
     graph::{envelope::EnvNode, extensions::NodeExt, filter::FilterNode, oscillator::OscNode},
     synth::{factory::VoiceFactory, message::SynthMessage, poly::PolySynth},
@@ -15,12 +21,12 @@ fn main() -> Result<()> {
 
     let (mut tx, rx) = RingBuffer::<SynthMessage>::new(64);
     let factory = || {
-        let osc = OscNode::square();
+        let osc = OscNode::sine();
         let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.1);
         let _lowpass = FilterNode::lowpass(200.0);
         let _highpass = FilterNode::highpass(200.0);
 
-        osc.amplify(env).through(_lowpass)
+        osc.amplify(env)
     };
 
     let mut synth = PolySynth::new(48_000.0, 4, factory, rx);
@@ -73,7 +79,7 @@ fn run<F: VoiceFactory>(
 
         // Draw UI
         terminal.draw(|frame| {
-            render_waveform(frame, buffer);
+            render_ui(frame, buffer);
         })?;
 
         // Check for quit (non-blocking)
@@ -85,11 +91,18 @@ fn run<F: VoiceFactory>(
     }
 }
 
-fn render_waveform(frame: &mut Frame, buffer: &[f32]) {
-    let chunks = Layout::default()
-        .direction(ratatui::layout::Direction::Vertical)
-        .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
+fn render_ui(frame: &mut Frame, buffer: &[f32]) {
+    // Split screen: left=waveform, right=spectrum+info
+    let main_chunks = Layout::default()
+        .direction(ratatui::layout::Direction::Horizontal)
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(frame.area());
+
+    // Right side: spectrum (top) + info (bottom)
+    let right_chunks = Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .split(main_chunks[1]);
     
     let data: Vec<(f64, f64)> = buffer
         .iter()
@@ -98,6 +111,12 @@ fn render_waveform(frame: &mut Frame, buffer: &[f32]) {
         .collect();
     
     let peak = buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
+
+    let (mut sum, mut sum2) = (0.0f64, 0.0);
+    for &s in buffer { let x = s as f64; sum += x; sum2 += x*x; }
+    let dc  = sum / buffer.len() as f64;
+    let rms = (sum2 / buffer.len() as f64).sqrt();
+
 
     let dataset = Dataset::default()
         .name("Waveform")
@@ -135,6 +154,8 @@ fn render_waveform(frame: &mut Frame, buffer: &[f32]) {
     
     let info_text = vec![
       Line::from(format!("Peak Amplitude: {:.3}", peak)),
+      Line::from(format!("RMS: {:.3}", rms)),
+      Line::from(format!("DC: {:.3}", dc)),
       Line::from(format!("Buffer Size: {} samples", buffer.len())),
       Line::from(format!("Sample Rate: 48k Hz")),
     ];
@@ -142,6 +163,81 @@ fn render_waveform(frame: &mut Frame, buffer: &[f32]) {
     let info = Paragraph::new(info_text)
     .block(Block::default().title("Info").borders(Borders::ALL));
 
-    frame.render_widget(chart, chunks[0]);
-    frame.render_widget(info, chunks[1]);
+    // Compute spectrum
+    let spectrum_data = compute_spectrum(buffer, 48_000.0);
+
+    // Render spectrum
+    let spectrum_widget = render_spectrum(&spectrum_data);
+
+    // Render all widgets
+    frame.render_widget(chart, main_chunks[0]);
+    frame.render_widget(spectrum_widget, right_chunks[0]);
+    frame.render_widget(info, right_chunks[1]);
+}
+
+fn compute_spectrum(buffer: &[f32], sample_rate: f32) -> Vec<(f64, f64)> {
+    let n = buffer.len();
+
+    // Apply Hann window to reduce spectral leakage
+    let mut windowed: Vec<Complex<f32>> = buffer
+        .iter()
+        .enumerate()
+        .map(|(i, &sample)| {
+            let window = 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / n as f32).cos());
+            Complex::new(sample * window, 0.0)
+        })
+        .collect();
+
+    // Compute FFT
+    let mut planner = FftPlanner::new();
+    let fft = planner.plan_fft_forward(n);
+    fft.process(&mut windowed);
+
+    // Compute magnitude spectrum (only first half, rest is mirror)
+    let num_bins = 32; // Number of frequency bins to display
+    let bin_size = (n / 2) / num_bins;
+
+    windowed[..n/2]
+        .chunks(bin_size)
+        .enumerate()
+        .map(|(i, chunk)| {
+            let freq = (i * bin_size) as f64 * sample_rate as f64 / n as f64;
+            let magnitude = chunk.iter()
+                .map(|c| (c.re * c.re + c.im * c.im).sqrt())
+                .sum::<f32>() / chunk.len() as f32;
+            (freq, magnitude as f64)
+        })
+        .take(num_bins)
+        .collect()
+}
+
+fn render_spectrum(data: &[(f64, f64)]) -> Chart {
+    let dataset = Dataset::default()
+        .name("Spectrum")
+        .marker(symbols::Marker::Braille)
+        .graph_type(GraphType::Line)
+        .style(Style::default().fg(Color::Green))
+        .data(data);
+
+    let max_freq = data.last().map(|(f, _)| *f).unwrap_or(20_000.0);
+    let max_mag = data.iter().map(|(_, m)| m).fold(0.0f64, |acc, &m| acc.max(m));
+
+    Chart::new(vec![dataset])
+        .block(
+            Block::default()
+                .title("Spectrum Analyzer")
+                .borders(Borders::ALL),
+        )
+        .x_axis(
+            Axis::default()
+                .title("Frequency (Hz)")
+                .style(Style::default().fg(Color::Gray))
+                .bounds([0.0, max_freq]),
+        )
+        .y_axis(
+            Axis::default()
+                .title("Magnitude")
+                .style(Style::default().fg(Color::Gray))
+                .bounds([0.0, max_mag * 1.1]),
+        )
 }
