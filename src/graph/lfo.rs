@@ -44,7 +44,7 @@ impl LfoNode {
 
     pub fn saw(frequency: f32) -> Self {
         Self {
-            osc: OscillatorBlock::saw(),
+            osc: OscillatorBlock::sawtooth(),
             frequency,
         }
     }

@@ -11,8 +11,8 @@ impl OscNode {
         Self { osc }
     }
 
-    pub fn saw() -> Self {
-        let osc = OscillatorBlock::saw();
+    pub fn sawtooth() -> Self {
+        let osc = OscillatorBlock::sawtooth();
         Self { osc }
     }
 

@@ -1,4 +1,7 @@
-use crate::{dsp::delay::DelayLine, graph::node::{GraphNode, Modulatable}};
+use crate::{
+    dsp::delay::DelayLine,
+    graph::node::{GraphNode, Modulatable},
+};
 
 /*
 Delay Effect
@@ -104,7 +107,6 @@ impl GraphNode for DelayNode {
         self.delay_line.reset();
     }
 }
-
 
 #[derive(Clone, Copy, Debug)]
 pub enum DelayParam {

@@ -40,7 +40,7 @@ impl OscillatorBlock {
         }
     }
 
-    pub fn saw() -> Self {
+    pub fn sawtooth() -> Self {
         Self {
             phase: 0.0,
             waveform: OscillatorWaveform::Sawtooth,
