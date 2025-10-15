@@ -2,7 +2,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use rtrb::RingBuffer;
 use saavy_dsp::{
-    graph::{envelope::EnvNode, extensions::NodeExt, filter::FilterNode, oscillator::OscNode},
+    graph::{envelope::EnvNode, extensions::NodeExt, filter::{FilterNode, FilterParam}, lfo::LfoNode, oscillator::OscNode},
     synth::{message::SynthMessage, poly::PolySynth},
     MAX_BLOCK_SIZE,
 };
@@ -33,9 +33,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let factory = || {
         let osc = OscNode::saw();
         let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
-        let lowpass = FilterNode::lowpass(250.0);
-        let highpass = FilterNode::highpass(600.0);
-        osc.amplify(env).through(highpass).through(lowpass)
+        let lfo = LfoNode::sine(10.0);
+        let lowpass_modulated = FilterNode::lowpass(250.0).modulate(lfo, FilterParam::Cutoff, 1000.0);
+        osc.amplify(env).through(lowpass_modulated)
     };
 
     let mut synth = PolySynth::new(sample_rate, 4, factory, rx);

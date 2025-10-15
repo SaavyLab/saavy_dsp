@@ -38,6 +38,15 @@ impl RenderCtx {
     }
 }
 
+/// Trait for nodes that support parameter modulation
+pub trait Modulatable: Send {
+    type Param: Copy + Send;
+
+    fn get_param(&self, param: Self::Param) -> f32;
+
+    fn apply_modulation(&mut self, param: Self::Param, base: f32, modulation: f32);
+}
+
 /// Core trait for audio processing graph nodes
 ///
 /// Nodes can render audio and respond to musical events
