@@ -8,8 +8,9 @@ use crate::graph::node::RenderCtx;
 #[derive(Debug, Clone, Copy)]
 pub enum OscillatorWaveform {
     Sine,
-    Saw,
+    Sawtooth,
     Square,
+    Triangle,
     Noise,
 }
 
@@ -38,14 +39,16 @@ impl OscillatorBlock {
             rng: 0x9E3779B9,
         }
     }
+
     pub fn saw() -> Self {
         Self {
             phase: 0.0,
-            waveform: OscillatorWaveform::Saw,
+            waveform: OscillatorWaveform::Sawtooth,
             duty: 0.5,
             rng: 0x9E3779B9,
         }
     }
+
     pub fn square() -> Self {
         Self {
             phase: 0.0,
@@ -55,11 +58,21 @@ impl OscillatorBlock {
         }
     }
 
+    pub fn triangle() -> Self {
+        Self {
+            phase: 0.0,
+            waveform: OscillatorWaveform::Triangle,
+            duty: 0.5,
+            rng: 0x9E3779B9,
+        }
+    }
+
     pub fn next_sample(&mut self) -> f32 {
         match self.waveform {
+            OscillatorWaveform::Triangle => todo!("Implement triangle synthesis"),
             OscillatorWaveform::Sine => self.phase.sin(),
             // normalized phase in [0,1]: phi = phase / TAU
-            OscillatorWaveform::Saw => {
+            OscillatorWaveform::Sawtooth => {
                 let phi = self.phase / TAU;
                 (2.0 * phi) - 1.0
             }

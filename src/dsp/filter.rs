@@ -31,8 +31,8 @@ pub struct SVFilter {
     ic1eq: f32, // First integrator's memory
     ic2eq: f32, // Second integrator's memory
 
-    cutoff_hz: f32,
-    resonance: f32,
+    pub cutoff_hz: f32,
+    pub resonance: f32,
     filter_type: FilterType,
 }
 
@@ -130,6 +130,14 @@ impl SVFilter {
     pub fn reset(&mut self) {
         self.ic1eq = 0.0;
         self.ic2eq = 0.0;
+    }
+
+    pub fn set_cutoff(&mut self, cutoff: f32) {
+        self.cutoff_hz = cutoff;
+    }
+
+    pub fn set_resonance(&mut self, resonance: f32) {
+        self.resonance = resonance;
     }
 }
 
@@ -256,6 +264,104 @@ mod tests {
             "expected notch to reject center freq, got center_peak={}, off_peak={}",
             center_peak,
             off_peak
+        );
+    }
+
+    #[test]
+    fn test_set_cutoff_updates_frequency() {
+        let mut filter = SVFilter::lowpass(1000.0);
+
+        // Initial cutoff
+        assert!((filter.cutoff_hz - 1000.0).abs() < 0.1);
+
+        // Update cutoff
+        filter.set_cutoff(2000.0);
+        assert!((filter.cutoff_hz - 2000.0).abs() < 0.1);
+
+        // Update again
+        filter.set_cutoff(500.0);
+        assert!((filter.cutoff_hz - 500.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_set_resonance_updates_value() {
+        let mut filter = SVFilter::lowpass(1000.0);
+
+        // Initial resonance should be default
+        let initial_res = filter.resonance;
+
+        // Update resonance
+        filter.set_resonance(2.0);
+        assert!((filter.resonance - 2.0).abs() < 0.01);
+        assert!((filter.resonance - initial_res).abs() > 0.01, "Resonance should have changed");
+
+        // Update again
+        filter.set_resonance(5.0);
+        assert!((filter.resonance - 5.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_set_cutoff_affects_filtering() {
+        let sample_rate = 48_000.0;
+        let test_freq = 1_000.0;
+
+        // Create filter with low cutoff (should attenuate 1kHz)
+        let mut filter = SVFilter::lowpass(200.0);
+        let mut osc = OscNode::sine();
+        let mut buffer1 = vec![0.0f32; 256];
+        let ctx = RenderCtx::from_freq(sample_rate, test_freq, 100.0);
+        osc.render_block(&mut buffer1, &ctx);
+        filter.render(&mut buffer1, &ctx);
+        let peak_low_cutoff = peak_after_transient(&buffer1);
+
+        // Raise cutoff to well above test frequency (should pass 1kHz)
+        filter.reset();
+        filter.set_cutoff(5_000.0);
+        let mut osc = OscNode::sine();
+        let mut buffer2 = vec![0.0f32; 256];
+        osc.render_block(&mut buffer2, &ctx);
+        filter.render(&mut buffer2, &ctx);
+        let peak_high_cutoff = peak_after_transient(&buffer2);
+
+        // High cutoff should pass more signal than low cutoff
+        assert!(
+            peak_high_cutoff > peak_low_cutoff * 2.0,
+            "High cutoff should pass more signal: high={}, low={}",
+            peak_high_cutoff,
+            peak_low_cutoff
+        );
+    }
+
+    #[test]
+    fn test_set_resonance_affects_peak() {
+        let sample_rate = 48_000.0;
+        let cutoff = 1_000.0;
+
+        // Lowpass filter at cutoff with low resonance
+        let mut filter = SVFilter::lowpass(cutoff);
+        filter.set_resonance(0.1);
+        let mut osc = OscNode::sine();
+        let mut buffer1 = vec![0.0f32; 512];
+        let ctx = RenderCtx::from_freq(sample_rate, cutoff, 100.0);
+        osc.render_block(&mut buffer1, &ctx);
+        filter.render(&mut buffer1, &ctx);
+        let peak_low_res = peak_after_transient(&buffer1);
+
+        // Same filter with moderate resonance (not too high to avoid instability)
+        filter.reset();
+        filter.set_resonance(2.0);
+        let mut osc = OscNode::sine();
+        let mut buffer2 = vec![0.0f32; 512];
+        osc.render_block(&mut buffer2, &ctx);
+        filter.render(&mut buffer2, &ctx);
+        let peak_high_res = peak_after_transient(&buffer2);
+
+        // Higher resonance should boost signal at cutoff frequency
+        assert!(
+            peak_high_res > peak_low_res * 1.2,
+            "High resonance should boost signal: high_res={}, low_res={}",
+            peak_high_res,
+            peak_low_res
         );
     }
 }

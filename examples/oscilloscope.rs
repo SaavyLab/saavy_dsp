@@ -11,7 +11,7 @@ use ratatui::{
 use rtrb::{PushError, RingBuffer};
 use rustfft::{num_complex::Complex, Fft, FftPlanner};
 use saavy_dsp::{
-    graph::{envelope::EnvNode, extensions::NodeExt, filter::FilterNode, oscillator::OscNode},
+    graph::{envelope::EnvNode, extensions::NodeExt, filter::{FilterNode, FilterParam}, lfo::LfoNode, oscillator::OscNode},
     synth::{
         factory::VoiceFactory,
         message::SynthMessage,
@@ -46,10 +46,11 @@ fn main() -> Result<()> {
     let (tx, rx) = RingBuffer::<SynthMessage>::new(64);
 
     let factory = || {
-        let osc = OscNode::square();
+        let osc = OscNode::sine();
         let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
-        let filter = FilterNode::lowpass(2_000.0);
-        osc.amplify(env).through(filter)
+        let lfo = LfoNode::sine(10.0);
+        let filter_modulated = FilterNode::highpass(2_000.0).modulate(lfo, FilterParam::Cutoff, 500.0);
+        osc.amplify(env).through(filter_modulated)
     };
 
     let mut synth = PolySynth::new(sample_rate, max_voices, factory, rx);
