@@ -48,4 +48,11 @@ impl<N: GraphNode, M: GraphNode> GraphNode for Amplify<N, M> {
     fn is_active(&self) -> bool {
         self.modulator.is_active() | self.signal.is_active()
     }
+
+    fn get_envelope_level(&self) -> Option<f32> {
+        // Prefer the modulator's envelope (e.g., ADSR), otherwise fall back to the signal
+        self.modulator
+            .get_envelope_level()
+            .or_else(|| self.signal.get_envelope_level())
+    }
 }

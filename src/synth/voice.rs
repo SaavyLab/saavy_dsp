@@ -70,6 +70,10 @@ impl<T: GraphNode> Voice<T> {
         matches!(self.state, VoiceState::Active | VoiceState::Releasing)
     }
 
+    pub fn get_envelope_level(&self) -> Option<f32> {
+        self.graph.get_envelope_level()
+    }
+
     pub fn free(&mut self) {
         self.state = VoiceState::Free;
         self.note = 0;
