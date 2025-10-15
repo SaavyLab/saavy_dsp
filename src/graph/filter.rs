@@ -1,4 +1,7 @@
-use crate::{dsp::filter::SVFilter, graph::node::{GraphNode, Modulatable}};
+use crate::{
+    dsp::filter::SVFilter,
+    graph::node::{GraphNode, Modulatable},
+};
 
 #[derive(Clone, Copy, Debug)]
 pub enum FilterParam {
@@ -30,7 +33,7 @@ impl FilterNode {
             filter,
             base_cutoff: cutoff_hz,
             base_resonance: 0.0,
-         }
+        }
     }
 
     pub fn bandpass(cutoff_hz: f32) -> Self {
@@ -49,7 +52,7 @@ impl FilterNode {
         FilterNode {
             filter,
             base_cutoff: cutoff_hz,
-            base_resonance: 0.0
+            base_resonance: 0.0,
         }
     }
 
@@ -71,7 +74,7 @@ impl Modulatable for FilterNode {
     fn get_param(&self, param: Self::Param) -> f32 {
         match param {
             FilterParam::Cutoff => self.base_cutoff,
-            FilterParam::Resonance => self.base_resonance
+            FilterParam::Resonance => self.base_resonance,
         }
     }
 
