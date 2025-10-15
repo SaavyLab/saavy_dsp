@@ -9,12 +9,12 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 use rtrb::{PushError, RingBuffer};
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::{num_complex::Complex, Fft, FftPlanner};
 use saavy_dsp::{
     graph::{envelope::EnvNode, extensions::NodeExt, filter::FilterNode, oscillator::OscNode},
     synth::{factory::VoiceFactory, message::SynthMessage, poly::PolySynth},
 };
-use std::{thread, time::Duration};
+use std::{sync::Arc, thread, time::Duration};
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -22,7 +22,7 @@ fn main() -> Result<()> {
 
     let (tx, rx) = RingBuffer::<SynthMessage>::new(64);
     let factory = || {
-        let osc = OscNode::sine();
+        let osc = OscNode::saw();
         let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.1);
         let _lowpass = FilterNode::lowpass(200.0);
         let _highpass = FilterNode::highpass(200.0);
@@ -51,6 +51,7 @@ fn run<F: VoiceFactory>(
 
     let block_samples = buffer.len();
     let block_duration = Duration::from_secs_f32(block_samples as f32 / sample_rate);
+    let mut spectrum_analyzer = SpectrumAnalyzer::new(block_samples, sample_rate, 48, 6);
 
     let notes = [60, 64, 67, 72];
     let note_duration_samples = (sample_rate * 0.5) as usize;
@@ -86,9 +87,10 @@ fn run<F: VoiceFactory>(
 
         synth.render_block(buffer);
         samples_into_note = samples_into_note.saturating_add(block_samples);
+        spectrum_analyzer.maybe_update(buffer);
 
         terminal.draw(|frame| {
-            render_ui(frame, buffer);
+            render_ui(frame, buffer, sample_rate, spectrum_analyzer.data());
         })?;
 
         if event::poll(Duration::from_millis(1))? {
@@ -121,7 +123,115 @@ fn send_message(tx: &mut rtrb::Producer<SynthMessage>, message: SynthMessage) {
     }
 }
 
-fn render_ui(frame: &mut Frame, buffer: &[f32]) {
+struct SpectrumAnalyzer {
+    window: Vec<f32>,
+    freq_bins: Vec<f64>,
+    bin_indices: Vec<usize>,
+    fft: Arc<dyn Fft<f32>>,
+    scratch: Vec<Complex<f32>>,
+    spectrum: Vec<(f64, f64)>,
+    frame_counter: usize,
+    update_interval: usize,
+}
+
+impl SpectrumAnalyzer {
+    fn new(buffer_len: usize, sample_rate: f32, num_bins: usize, update_interval: usize) -> Self {
+        let mut planner = FftPlanner::new();
+        let fft = planner.plan_fft_forward(buffer_len);
+
+        let window: Vec<f32> = (0..buffer_len)
+            .map(|i| {
+                if buffer_len > 1 {
+                    let denom = (buffer_len - 1) as f32;
+                    0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / denom).cos())
+                } else {
+                    1.0
+                }
+            })
+            .collect();
+
+        let mut freq_bins = Vec::with_capacity(num_bins);
+        let mut bin_indices = Vec::with_capacity(num_bins);
+        let max_freq = (sample_rate / 2.0).min(20_000.0).max(1.0);
+        let min_freq = 20.0_f32.min(max_freq);
+        let ratio = if max_freq > min_freq {
+            (max_freq / min_freq) as f64
+        } else {
+            1.0
+        };
+        let half = buffer_len.saturating_div(2).max(1);
+        for i in 0..num_bins {
+            let t = if num_bins > 1 {
+                i as f64 / (num_bins - 1) as f64
+            } else {
+                0.0
+            };
+            let freq = if ratio > 1.0 {
+                min_freq as f64 * ratio.powf(t)
+            } else {
+                min_freq as f64 + (max_freq as f64 - min_freq as f64) * t
+            };
+            let mut index = (freq * buffer_len as f64 / sample_rate as f64).round() as usize;
+            if index >= half {
+                index = half - 1;
+            }
+            freq_bins.push(freq);
+            bin_indices.push(index);
+        }
+
+        let scratch = vec![Complex::new(0.0, 0.0); buffer_len];
+        let spectrum = freq_bins.iter().map(|&f| (f, -120.0)).collect();
+
+        Self {
+            window,
+            freq_bins,
+            bin_indices,
+            fft,
+            scratch,
+            spectrum,
+            frame_counter: 0,
+            update_interval: update_interval.max(1),
+        }
+    }
+
+    fn maybe_update(&mut self, buffer: &[f32]) {
+        if buffer.len() != self.window.len() {
+            return;
+        }
+
+        let should_update = self.frame_counter % self.update_interval == 0 || self.spectrum.is_empty();
+        self.frame_counter = self.frame_counter.wrapping_add(1);
+        if !should_update {
+            return;
+        }
+
+        for (i, sample) in buffer.iter().enumerate() {
+            self.scratch[i].re = *sample * self.window[i];
+            self.scratch[i].im = 0.0;
+        }
+
+        self.fft.process(&mut self.scratch);
+        let half = (self.scratch.len() / 2).max(1);
+
+        for (i, &idx) in self.bin_indices.iter().enumerate() {
+            if let Some((_, magnitude_db)) = self.spectrum.get_mut(i) {
+                let index = idx.min(half.saturating_sub(1));
+                let bin = self.scratch[index];
+                let magnitude = (bin.re * bin.re + bin.im * bin.im).sqrt().max(1e-6);
+                *magnitude_db = 20.0 * (magnitude as f64).log10();
+                if let Some(freq) = self.freq_bins.get(i) {
+                    self.spectrum[i].0 = *freq;
+                }
+            }
+        }
+    }
+
+    fn data(&self) -> &[(f64, f64)] {
+        &self.spectrum
+    }
+}
+
+fn render_ui(frame: &mut Frame, buffer: &[f32], sample_rate: f32, spectrum: &[(f64, f64)]) {
     // Split screen: left=waveform, right=spectrum+info
     let main_chunks = Layout::default()
         .direction(ratatui::layout::Direction::Horizontal)
@@ -183,86 +293,20 @@ fn render_ui(frame: &mut Frame, buffer: &[f32]) {
         Line::from(format!("RMS: {:.3}", rms)),
         Line::from(format!("DC: {:.3}", dc)),
         Line::from(format!("Buffer Size: {} samples", buffer.len())),
-        Line::from(format!("Sample Rate: 48k Hz")),
+        Line::from(format!("Sample Rate: {:.1} Hz", sample_rate)),
     ];
 
     let info =
         Paragraph::new(info_text).block(Block::default().title("Info").borders(Borders::ALL));
 
-    // Compute spectrum
-    let spectrum_data = compute_spectrum(buffer, 48_000.0);
-
     // Render spectrum
-    let spectrum_widget = render_spectrum(&spectrum_data);
+    let spectrum_widget = render_spectrum(spectrum);
 
     // Render all widgets
     frame.render_widget(chart, main_chunks[0]);
     frame.render_widget(spectrum_widget, right_chunks[0]);
     frame.render_widget(info, right_chunks[1]);
 }
-
-fn compute_spectrum(buffer: &[f32], sample_rate: f32) -> Vec<(f64, f64)> {
-    let n = buffer.len();
-    if n == 0 {
-        return Vec::new();
-    }
-
-    // Apply Hann window to reduce spectral leakage
-    let mut windowed: Vec<Complex<f32>> = buffer
-        .iter()
-        .enumerate()
-        .map(|(i, &sample)| {
-            let window = if n > 1 {
-                let denom = (n - 1) as f32;
-                0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / denom).cos())
-            } else {
-                1.0
-            };
-            Complex::new(sample * window, 0.0)
-        })
-        .collect();
-
-    // Compute FFT
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_forward(n);
-    fft.process(&mut windowed);
-
-    // Logarithmic frequency bins (like musical octaves)
-    let min_freq = 20.0; // 20 Hz (lowest audible)
-    let max_freq = (sample_rate / 2.0).min(20_000.0); // Nyquist or 20kHz
-    let num_bins = 48; // More bins for better resolution
-
-    let mut spectrum = Vec::new();
-
-    for i in 0..num_bins {
-        // Logarithmic frequency spacing
-        let t = i as f64 / (num_bins - 1) as f64;
-        let freq = min_freq as f64 * (max_freq as f64 / min_freq as f64).powf(t);
-
-        // Map frequency to FFT bin
-        let bin_index = (freq * n as f64 / sample_rate as f64).round() as usize;
-
-        if bin_index >= windowed.len() / 2 {
-            break;
-        }
-
-        // Get magnitude at this bin
-        let c = &windowed[bin_index];
-        let magnitude = (c.re * c.re + c.im * c.im).sqrt();
-
-        // Convert to decibels (with floor to avoid log(0))
-        let magnitude_db = if magnitude > 1e-10 {
-            20.0 * (magnitude as f64).log10()
-        } else {
-            -100.0 // Floor at -100 dB
-        };
-
-        spectrum.push((freq, magnitude_db));
-    }
-
-    spectrum
-}
-
 fn render_spectrum(data: &[(f64, f64)]) -> Chart {
     let dataset = Dataset::default()
         .name("Spectrum")
