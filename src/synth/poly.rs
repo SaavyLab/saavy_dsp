@@ -9,6 +9,7 @@ use crate::{
     MAX_BLOCK_SIZE,
 };
 
+#[derive(Clone, Copy, Debug)]
 pub struct VoiceEnvelope {
     pub voice_index: usize,
     pub level: f32,
