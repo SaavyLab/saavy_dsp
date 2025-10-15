@@ -3,7 +3,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rtrb::RingBuffer;
 use saavy_dsp::{
     graph::{
-        delay::DelayNode, envelope::EnvNode, extensions::NodeExt, filter::{FilterNode, FilterParam}, lfo::LfoNode, oscillator::OscNode
+        delay::{DelayNode, DelayParam}, envelope::EnvNode, extensions::NodeExt, filter::{FilterNode, FilterParam}, lfo::LfoNode, oscillator::OscNode
     },
     synth::{message::SynthMessage, poly::PolySynth},
     MAX_BLOCK_SIZE,
@@ -35,14 +35,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let factory = || {
         let osc = OscNode::sine();
         let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
-        let delay = DelayNode::new(500.0);
-        let lfo = LfoNode::sine(10.0);
-        let lowpass_modulated =
-            FilterNode::lowpass(250.0).modulate(lfo, FilterParam::Cutoff, 1000.0);
-        osc
-            .amplify(env)
-            // .through(lowpass_modulated)
-            // .through(delay)
+
+        // Chorus effect: modulate delay time with slow LFO
+        let delay_lfo = LfoNode::sine(0.5);  // 0.5 Hz - slow wobble
+        let delay = DelayNode::new(30.0, 0.2, 0.5)
+            .modulate(delay_lfo, DelayParam::DelayTime, 10.0);  // 30ms ±10ms = chorus
+
+        osc.amplify(env).through(delay)
     };
 
     let mut synth = PolySynth::new(sample_rate, 4, factory, rx);
@@ -60,12 +59,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
                 let buf = &mut buffer[..frames_to_render];
                 synth.render_block(buf);
-
-                // Debug helper: log when we have audible signal
-                let peak = buf.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
-                if peak > 0.001 {
-                    eprintln!("Audio peak: {:.3}", peak);
-                }
 
                 let output_offset = frames_written * channels;
                 for (i, &sample) in buf.iter().enumerate() {
@@ -96,14 +89,12 @@ fn play_arpeggio(tx: &mut rtrb::Producer<SynthMessage>) {
 
     loop {
         for &note in &notes {
-            eprintln!("NoteOn {note}");
             let _ = tx.push(SynthMessage::NoteOn {
                 note,
                 velocity: 100,
             });
             thread::sleep(note_duration);
 
-            eprintln!("NoteOff {note}");
             let _ = tx.push(SynthMessage::NoteOff { note, velocity: 0 });
             thread::sleep(gap);
         }

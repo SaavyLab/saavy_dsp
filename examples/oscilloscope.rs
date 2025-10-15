@@ -12,7 +12,7 @@ use rtrb::{PushError, RingBuffer};
 use rustfft::{num_complex::Complex, Fft, FftPlanner};
 use saavy_dsp::{
     graph::{
-        delay::DelayNode, envelope::EnvNode, extensions::NodeExt, filter::{FilterNode, FilterParam}, lfo::LfoNode, oscillator::OscNode
+        delay::{DelayNode, DelayParam}, envelope::EnvNode, extensions::NodeExt, filter::{FilterNode, FilterParam}, lfo::LfoNode, oscillator::OscNode
     },
     synth::{
         factory::VoiceFactory,
@@ -25,6 +25,7 @@ use std::{sync::Arc, thread, time::Duration};
 
 const ENVELOPE_HISTORY_LEN: usize = 256;
 const ENVELOPE_UPDATE_INTERVAL: usize = 6;
+const SPECTRUM_UPDATE_INTERVAL: usize = 1; // Update spectrum every frame for higher FPS
 const SPECTRUM_BINS: usize = 48;
 const VOICE_COLORS: [Color; 8] = [
     Color::LightRed,
@@ -42,7 +43,9 @@ fn main() -> Result<()> {
     let terminal = ratatui::init();
 
     let sample_rate = 48_000.0;
-    let buffer_len = 2048;
+    // Smaller buffers increase UI update rate (FPS) because the loop ticks per block.
+    // 2048 → ~23 FPS, 1024 → ~47 FPS, 512 → ~94 FPS at 48 kHz.
+    let buffer_len = 1024;
     let max_voices = 4;
 
     let (tx, rx) = RingBuffer::<SynthMessage>::new(64);
@@ -50,7 +53,8 @@ fn main() -> Result<()> {
     let factory = || {
         let osc = OscNode::sine();
         let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
-        let delay = DelayNode::new(500.0);
+        let lfo = LfoNode::sine(0.5);
+        let delay = DelayNode::new(250.0, 0.5, 0.4).modulate(lfo, DelayParam::DelayTime, 10.0);  // 250ms delay, 50% feedback, 40% wet mix
         let lfo = LfoNode::sine(10.0);
         let filter_modulated =
             FilterNode::highpass(2_000.0).modulate(lfo, FilterParam::Cutoff, 500.0);
@@ -92,7 +96,7 @@ fn run<F: VoiceFactory>(
         block_samples,
         sample_rate,
         SPECTRUM_BINS,
-        ENVELOPE_UPDATE_INTERVAL,
+        SPECTRUM_UPDATE_INTERVAL,
     );
     let mut envelope_scratch = Vec::with_capacity(synth.max_voices());
 
@@ -271,9 +275,10 @@ impl SpectrumAnalyzer {
             if let Some((freq, magnitude_db)) = self.spectrum.get_mut(i) {
                 let index = idx.min(half.saturating_sub(1));
                 let bin = self.scratch[index];
-                let magnitude = (bin.re * bin.re + bin.im * bin.im).sqrt().max(1e-6);
+                // Use power (re^2 + im^2) to avoid costly sqrt; 10*log10(power) == 20*log10(magnitude)
+                let power = (bin.re * bin.re + bin.im * bin.im).max(1e-12);
                 *freq = self.freq_bins[i];
-                *magnitude_db = 20.0 * (magnitude as f64).log10();
+                *magnitude_db = 10.0 * (power as f64).log10();
             }
         }
     }
@@ -384,11 +389,15 @@ fn render_ui(
         ])
         .split(main_chunks[1]);
 
-    let waveform_points: Vec<(f64, f64)> = buffer
-        .iter()
-        .enumerate()
-        .map(|(i, &sample)| (i as f64, sample as f64))
-        .collect();
+    // Downsample waveform to chart width to reduce per-frame allocations and draw cost
+    let target_w = main_chunks[0].width.max(1) as usize;
+    let step = (buffer.len() + target_w - 1) / target_w; // ceil_div
+    let mut waveform_points: Vec<(f64, f64)> = Vec::with_capacity(target_w);
+    let mut i = 0usize;
+    while i < buffer.len() {
+        waveform_points.push((i as f64, buffer[i] as f64));
+        i = i.saturating_add(step);
+    }
 
     let peak = buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
     let rms = (buffer.iter().map(|&x| x * x).sum::<f32>() / buffer.len() as f32).sqrt();
