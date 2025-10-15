@@ -1,5 +1,5 @@
 use crate::{
-    dsp::envelope::Envelope,
+    dsp::envelope::{Envelope, EnvelopeState},
     graph::node::{GraphNode, RenderCtx},
 };
 
@@ -16,6 +16,16 @@ impl EnvNode {
     pub fn adsr(attack: f32, decay: f32, sustain: f32, release: f32) -> Self {
         let env = Envelope::adsr(attack, decay, sustain, release);
         Self { env }
+    }
+
+    /// Get the current envelope level (for visualization)
+    pub fn level(&self) -> f32 {
+        self.env.level()
+    }
+
+    /// Get the current envelope state (for visualization)
+    pub fn state(&self) -> EnvelopeState {
+        self.env.state()
     }
 }
 
