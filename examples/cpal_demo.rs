@@ -1,25 +1,19 @@
-#[cfg(feature = "cpal-demo")]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
-#[cfg(feature = "cpal-demo")]
 use rtrb::RingBuffer;
-#[cfg(feature = "cpal-demo")]
 use saavy_dsp::{
     graph::{envelope::EnvNode, extensions::NodeExt, filter::FilterNode, oscillator::OscNode},
     synth::{message::SynthMessage, poly::PolySynth},
     MAX_BLOCK_SIZE,
 };
-#[cfg(feature = "cpal-demo")]
 use std::{thread, time::Duration};
 
-#[cfg(feature = "cpal-demo")]
 fn main() {
     if let Err(err) = run() {
         eprintln!("cpal demo error: {err}");
     }
 }
 
-#[cfg(feature = "cpal-demo")]
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let host = cpal::default_host();
     let device = host
@@ -37,11 +31,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (mut tx, rx) = RingBuffer::<SynthMessage>::new(64);
 
     let factory = || {
-        let osc = OscNode::sine();
+        let osc = OscNode::saw();
         let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
         let lowpass = FilterNode::lowpass(250.0);
         let highpass = FilterNode::highpass(600.0);
-        osc.amplify(env).through(lowpass).through(highpass)
+        osc.amplify(env).through(highpass).through(lowpass)
     };
 
     let mut synth = PolySynth::new(sample_rate, 4, factory, rx);
@@ -88,7 +82,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(feature = "cpal-demo")]
 fn play_arpeggio(tx: &mut rtrb::Producer<SynthMessage>) {
     let notes = [60, 64, 67, 72]; // MIDI: C4, E4, G4, C5
     let note_duration = Duration::from_millis(450); // ≈ quarter note at 120 BPM
@@ -108,9 +101,4 @@ fn play_arpeggio(tx: &mut rtrb::Producer<SynthMessage>) {
             thread::sleep(gap);
         }
     }
-}
-
-#[cfg(not(feature = "cpal-demo"))]
-fn main() {
-    eprintln!("Build with --features cpal-demo to run this example.");
 }
