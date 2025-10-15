@@ -293,7 +293,10 @@ mod tests {
         // Update resonance
         filter.set_resonance(2.0);
         assert!((filter.resonance - 2.0).abs() < 0.01);
-        assert!((filter.resonance - initial_res).abs() > 0.01, "Resonance should have changed");
+        assert!(
+            (filter.resonance - initial_res).abs() > 0.01,
+            "Resonance should have changed"
+        );
 
         // Update again
         filter.set_resonance(5.0);
