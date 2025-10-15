@@ -165,4 +165,14 @@ impl Envelope {
         self.release_progress = 0;
         self.release_start = 0.0;
     }
+
+    /// Get the current envelope level (0.0 to 1.0)
+    pub fn level(&self) -> f32 {
+        self.current_level
+    }
+
+    /// Get the current envelope state
+    pub fn state(&self) -> EnvelopeState {
+        self.state
+    }
 }
