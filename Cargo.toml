@@ -11,18 +11,18 @@ name = "saavy_dsp"
 crate-type = ["rlib"]
 
 [features]
-default = ["cpal-demo"]
+default = []
 serde = ["dep:serde"]
-cpal-demo = ["dep:cpal", "dep:crossterm"]
-analysis = ["dep:rustfft"]
 
 [dependencies]
 rtrb = { version = "0.3.2" }
-cpal = { version = "0.15", optional = true }
-rustfft = { version = "6", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
-crossterm = { version = "0.27", optional = true }
 
 [dev-dependencies]
+color-eyre = "0.6.3"
+crossterm = "0.28.1"
+ratatui = "0.29.0"
+cpal = "0.15"
+rustfft = "6"
 
 [build-dependencies]
