@@ -45,4 +45,8 @@ impl GraphNode for EnvNode {
     fn is_active(&self) -> bool {
         self.env.is_active()
     }
+
+    fn get_envelope_level(&self) -> Option<f32> {
+        Some(self.env.level())
+    }
 }

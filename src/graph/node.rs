@@ -58,6 +58,10 @@ pub trait GraphNode: Send {
         // Default: do nothing
     }
 
+    fn get_envelope_level(&self) -> Option<f32> {
+        None
+    }
+
     /// Check if this node is still producing sound
     ///
     /// Used by voice management to know when a voice can be freed.

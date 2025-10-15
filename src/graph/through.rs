@@ -30,4 +30,8 @@ impl<S: GraphNode, F: GraphNode> GraphNode for Through<S, F> {
     fn is_active(&self) -> bool {
         self.source.is_active() || self.filter.is_active()
     }
+
+    fn get_envelope_level(&self) -> Option<f32> {
+        self.source.get_envelope_level()
+    }
 }

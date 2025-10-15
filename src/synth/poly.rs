@@ -9,6 +9,12 @@ use crate::{
     MAX_BLOCK_SIZE,
 };
 
+pub struct VoiceEnvelope {
+    pub voice_index: usize,
+    pub level: f32,
+    pub state: VoiceState,
+}
+
 /// Polyphonic synthesizer - manages multiple voices of any type
 pub struct PolySynth<F: VoiceFactory> {
     voices: Vec<Voice<F::Voice>>,
@@ -116,5 +122,30 @@ impl<F: VoiceFactory> PolySynth<F> {
         self.voices
             .iter_mut()
             .find(|v| v.note() == note && v.is_active())
+    }
+
+    pub fn max_voices(&self) -> usize {
+        self.voices.len()
+    }
+
+    pub fn collect_voice_envelopes(&self, out: &mut Vec<VoiceEnvelope>) {
+        out.clear();
+        out.extend(self.voices.iter().enumerate().filter_map(|(i, v)| {
+            if v.is_active() {
+                v.get_envelope_level().map(|level| VoiceEnvelope {
+                    voice_index: i,
+                    level,
+                    state: v.state(),
+                })
+            } else {
+                None
+            }
+        }));
+    }
+
+    pub fn get_voice_envelopes(&self) -> Vec<VoiceEnvelope> {
+        let mut out = Vec::with_capacity(self.voices.len());
+        self.collect_voice_envelopes(&mut out);
+        out
     }
 }
