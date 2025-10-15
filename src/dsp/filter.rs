@@ -28,7 +28,7 @@ pub struct FilterOutputs {
 }
 
 pub struct SVFilter {
-    ic1eq: f32, // First integrator's memory
+    ic1eq: f32, // First integrator's memoryfeedback: f32, mix: f32
     ic2eq: f32, // Second integrator's memory
 
     pub cutoff_hz: f32,
