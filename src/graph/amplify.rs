@@ -46,7 +46,9 @@ impl<N: GraphNode, M: GraphNode> GraphNode for Amplify<N, M> {
     }
 
     fn is_active(&self) -> bool {
-        self.modulator.is_active() || self.signal.is_active()
+        // Intentionally not checking signal's activity
+        // because it's an oscillator and that's constant
+        self.modulator.is_active()
     }
 
     fn get_envelope_level(&self) -> Option<f32> {
