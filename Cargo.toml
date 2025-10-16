@@ -1,17 +1,17 @@
 [package]
 name = "saavy_dsp"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 description = "Low-level, realtime-safe DSP primitives for musical sound"
-repository = "https://example.com/saavy_dsp"
+repository = "https://github.com/saavylab/saavy_dsp"
 
 [lib]
 name = "saavy_dsp"
 crate-type = ["rlib"]
 
 [features]
-default = []
+default = ["rtrb"]
 serde = ["dep:serde"]
 rtrb = ["dep:rtrb"]
 

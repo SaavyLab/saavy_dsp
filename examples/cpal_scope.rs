@@ -11,7 +11,12 @@ use rtrb::{PushError, RingBuffer};
 use rustfft::{num_complex::Complex, Fft, FftPlanner};
 use saavy_dsp::{
     graph::{
-        delay::{DelayNode, DelayParam}, envelope::EnvNode, extensions::NodeExt, filter::FilterNode, lfo::LfoNode, oscillator::OscNode
+        delay::{DelayNode, DelayParam},
+        envelope::EnvNode,
+        extensions::NodeExt,
+        filter::FilterNode,
+        lfo::LfoNode,
+        oscillator::OscNode,
     },
     synth::{
         message::SynthMessage,
