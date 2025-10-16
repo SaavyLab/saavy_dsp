@@ -1,6 +1,6 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::TAU;
 
 use crate::graph::node::RenderCtx;
 
