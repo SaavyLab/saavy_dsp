@@ -13,9 +13,10 @@ crate-type = ["rlib"]
 [features]
 default = []
 serde = ["dep:serde"]
+rtrb = ["dep:rtrb"]
 
 [dependencies]
-rtrb = { version = "0.3.2" }
+rtrb = { version = "0.3.2", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]

@@ -3,7 +3,7 @@
 use rtrb::RingBuffer;
 use saavy_dsp::{
     graph::{envelope::EnvNode, extensions::NodeExt, oscillator::OscNode},
-    synth::{message::SynthMessage, poly::PolySynth},
+    synth::{message::SynthMessage, synth::Synth},
 };
 
 fn main() {
@@ -29,7 +29,7 @@ fn main() {
     };
 
     // Create polyphonic synth with that patch
-    let mut poly = PolySynth::new(sample_rate, max_voices, factory, rx);
+    let mut poly = Synth::new(sample_rate, max_voices, factory, rx);
 
     println!("Created PolySynth with {} voices\n", max_voices);
 

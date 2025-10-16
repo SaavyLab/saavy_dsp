@@ -10,7 +10,7 @@ use saavy_dsp::{
         delay::DelayNode, envelope::EnvNode, extensions::NodeExt, filter::FilterNode,
         oscillator::OscNode,
     },
-    synth::{message::SynthMessage, poly::PolySynth},
+    synth::{message::SynthMessage, synth::Synth},
 };
 
 #[test]
@@ -26,7 +26,7 @@ fn polysynth_renders_valid_audio() {
         let env = EnvNode::adsr(0.01, 0.1, 0.7, 0.3);
         osc.amplify(env)
     };
-    let mut synth = PolySynth::new(sample_rate, max_voices, factory, rx);
+    let mut synth = Synth::new(sample_rate, max_voices, factory, rx);
 
     // Trigger a note
     let _ = tx.push(SynthMessage::NoteOn {
@@ -69,7 +69,7 @@ fn polysynth_handles_multiple_voices() {
         let env = EnvNode::adsr(0.01, 0.1, 0.7, 0.3);
         osc.amplify(env)
     };
-    let mut synth = PolySynth::new(sample_rate, max_voices, factory, rx);
+    let mut synth = Synth::new(sample_rate, max_voices, factory, rx);
 
     // Play a chord (3 notes)
     let _ = tx.push(SynthMessage::NoteOn {
@@ -109,7 +109,7 @@ fn polysynth_note_off_works() {
         let env = EnvNode::adsr(0.01, 0.1, 0.7, 0.3);
         osc.amplify(env)
     };
-    let mut synth = PolySynth::new(sample_rate, max_voices, factory, rx);
+    let mut synth = Synth::new(sample_rate, max_voices, factory, rx);
 
     // Note on
     let _ = tx.push(SynthMessage::NoteOn {
@@ -293,7 +293,7 @@ fn polysynth_deterministic_renders() {
                 .through(highpass)
                 .through(delay)
         };
-        let mut synth = PolySynth::new(sample_rate, max_voices, factory, rx);
+        let mut synth = Synth::new(sample_rate, max_voices, factory, rx);
 
         let mut all_samples = Vec::new();
         let mut block_idx = 0;

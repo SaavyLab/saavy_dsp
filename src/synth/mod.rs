@@ -4,6 +4,5 @@
 pub mod allocator;
 pub mod factory;
 pub mod message;
-pub mod mono;
-pub mod poly;
+pub mod synth;
 pub mod voice;

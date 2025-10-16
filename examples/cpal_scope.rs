@@ -11,15 +11,11 @@ use rtrb::{PushError, RingBuffer};
 use rustfft::{num_complex::Complex, Fft, FftPlanner};
 use saavy_dsp::{
     graph::{
-        delay::{DelayNode, DelayParam},
-        extensions::NodeExt,
-        filter::FilterNode,
-        lfo::LfoNode,
-        oscillator::OscNode,
+        delay::{DelayNode, DelayParam}, envelope::EnvNode, extensions::NodeExt, filter::FilterNode, lfo::LfoNode, oscillator::OscNode
     },
     synth::{
         message::SynthMessage,
-        poly::{PolySynth, VoiceEnvelope},
+        synth::{Synth, VoiceEnvelope},
         voice::VoiceState,
     },
     MAX_BLOCK_SIZE,
@@ -77,7 +73,7 @@ fn run(mut terminal: DefaultTerminal) -> EyreResult<()> {
     // --- Voice factory (sound design) ---
     let factory = || {
         let osc = OscNode::triangle();
-        let env = saavy_dsp::graph::envelope::EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
+        let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
         let osc_saw = OscNode::sawtooth();
         let lfo_dly = LfoNode::sawtooth(0.5);
         let delay = DelayNode::new(30.0, 0.2, 0.4).modulate(lfo_dly, DelayParam::DelayTime, 10.0);
@@ -97,7 +93,7 @@ fn run(mut terminal: DefaultTerminal) -> EyreResult<()> {
         .build_output_stream(
             &config.into(),
             {
-                let mut synth = PolySynth::new(sample_rate, 4, factory, msg_rx);
+                let mut synth = Synth::new(sample_rate, 4, factory, msg_rx);
                 let mut audio_tx = audio_tx;
                 let mut env_tx = env_tx;
                 let mut env_scratch: Vec<VoiceEnvelope> = Vec::with_capacity(8);
