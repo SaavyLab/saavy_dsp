@@ -98,7 +98,11 @@ mod tests {
         // Read with 3 sample delay - should get first sample we wrote
         // (write_pos is now at 3, so read(3) goes back to position 0)
         let delayed = delay.read(3);
-        assert!((delayed - 1.0).abs() < 0.001, "Expected 1.0, got {}", delayed);
+        assert!(
+            (delayed - 1.0).abs() < 0.001,
+            "Expected 1.0, got {}",
+            delayed
+        );
     }
 
     #[test]
@@ -113,7 +117,11 @@ mod tests {
         // After writing 100 samples, write_pos is at 100
         // read(10) should give us sample at position 90 (100 - 10)
         let delayed = delay.read(10);
-        assert!((delayed - 90.0).abs() < 0.001, "Expected 90.0, got {}", delayed);
+        assert!(
+            (delayed - 90.0).abs() < 0.001,
+            "Expected 90.0, got {}",
+            delayed
+        );
     }
 
     #[test]
@@ -129,7 +137,11 @@ mod tests {
         // Should interpolate between sample at pos 1 (10.0) and pos 2 (20.0)
         // With frac=0.5: 10.0 * 0.5 + 20.0 * 0.5 = 15.0
         let delayed = delay.read_interpolated(1.5);
-        assert!((delayed - 15.0).abs() < 0.1, "Expected ~15.0, got {}", delayed);
+        assert!(
+            (delayed - 15.0).abs() < 0.1,
+            "Expected ~15.0, got {}",
+            delayed
+        );
     }
 
     #[test]
@@ -143,12 +155,19 @@ mod tests {
         // After writing 2 samples, write_pos is at 2
         // read_interpolated(2.0) should give us sample at position 0 (100.0)
         let delayed_int = delay.read_interpolated(2.0);
-        assert!((delayed_int - 100.0).abs() < 0.1, "Integer delay should be exact, got {}", delayed_int);
+        assert!(
+            (delayed_int - 100.0).abs() < 0.1,
+            "Integer delay should be exact, got {}",
+            delayed_int
+        );
 
         // Fractional delay 1.5 should interpolate between pos 0 and pos 1
         let delayed_frac = delay.read_interpolated(1.5);
-        assert!(delayed_frac > 100.0 && delayed_frac < 200.0,
-                "Fractional delay should be between samples, got {}", delayed_frac);
+        assert!(
+            delayed_frac > 100.0 && delayed_frac < 200.0,
+            "Fractional delay should be between samples, got {}",
+            delayed_frac
+        );
     }
 
     #[test]
@@ -157,13 +176,22 @@ mod tests {
 
         // next_sample writes then reads
         let delayed1 = delay.next_sample(1.0, 1);
-        assert!(delayed1.abs() < 0.001, "First read should be ~0 (empty buffer)");
+        assert!(
+            delayed1.abs() < 0.001,
+            "First read should be ~0 (empty buffer)"
+        );
 
         let delayed2 = delay.next_sample(2.0, 1);
-        assert!((delayed2 - 1.0).abs() < 0.001, "Should read what was written 1 sample ago");
+        assert!(
+            (delayed2 - 1.0).abs() < 0.001,
+            "Should read what was written 1 sample ago"
+        );
 
         let delayed3 = delay.next_sample(3.0, 1);
-        assert!((delayed3 - 2.0).abs() < 0.001, "Should read previous sample");
+        assert!(
+            (delayed3 - 2.0).abs() < 0.001,
+            "Should read previous sample"
+        );
     }
 
     #[test]
@@ -180,7 +208,10 @@ mod tests {
 
         // Read should return zeros
         let delayed = delay.read(5);
-        assert!(delayed.abs() < 0.001, "After reset, buffer should be zeroed");
+        assert!(
+            delayed.abs() < 0.001,
+            "After reset, buffer should be zeroed"
+        );
     }
 
     #[test]

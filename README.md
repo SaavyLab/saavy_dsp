@@ -2,33 +2,36 @@
 
 an approachable rust dsp toolkit for crafting musical voices from scratch.
 
-## what it does
+## what it is
 
-saavy_dsp keeps the essentials close at hand: oscillators, envelopes, sequencing, and a small graph system for wiring them together. start with presets, tweak until it sounds right, and dive deeper only when you want to.
+saavy_dsp is a synthesizer toolkit designed for play and exploration, built on a foundation of classic dsp principles. it keeps the essentials close at hand—oscillators, envelopes, and filters—and gives you a clean, composable api to snap them together. it's your sonic lego set, with a textbook in the box.
 
 it's a good match when you want to:
-- learn synthesis without parsing a textbook
-- prototype new sounds in rust with quick feedback loops
-- build instruments for games, apps, or vst plugins
-- explore sound design just for the joy of it
+- **prototype new sounds** in rust with a quick, intuitive workflow
+- **learn synthesis** not just by reading, but by building and experimenting
+- **build instruments** for games, apps, or vst plugins with confidence
+- **trust your tools**, knowing they're a clear, direct implementation of foundational dsp concepts
 
-not trying to unseat max/msp, supercollider, or your favorite production synth—this stays in the friendly lane.
+this is your sketchbook for sound—a place to explore, learn, and create, backed by solid engineering.
 
 ## guiding principles
 
-- **approachable**: start making sound in minutes with ready-to-use patches and examples
-- **composable**: small, predictable nodes that snap together into bigger voices
-- **real-time safe**: lock-free, allocation-free audio paths
-- **portable**: pure rust core that runs wherever rust does (embedded targets are on the roadmap)
+- **approachable & playful**: start making sound in minutes with a fluent, chainable api
+- **built on solid foundations**: every component is a clear implementation of classic dsp principles
+- **composable**: small, predictable nodes that snap together into bigger, more expressive voices
+- **real-time safe**: lock-free, allocation-free audio paths for glitch-free creativity
 
 ## status snapshot
 
-- **oscillators**: sine, saw, square, noise
+- **oscillators**: sine, saw, square, triangle, noise
 - **envelopes**: adsr with lock-free parameter control
+- **filters**: tpt state variable filter (lowpass, highpass, bandpass, notch)
+- **modulation**: lfo with multiple waveforms, modulatable delay
 - **graph architecture**: modular processing nodes with trait-based composition
+- **graph combinators**: `.amplify()`, `.through()`, `.modulate()`
 - **polyphony**: voice allocation, stealing, and mixing baked in
 - **sequencing**: integer timing with proper time signatures, tuplets, and dotted values
-- **real-time audio**: `cpal`-powered interactive demo
+- **real-time audio**: `cpal`-powered interactive demo with oscilloscope visualization
 
 ## quickstart
 
@@ -93,6 +96,7 @@ fn main() {
 - `examples/envelope_demo.rs` — visualize adsr phases
 - `examples/polyphony_demo.rs` — inspect voice allocation and stealing
 - `examples/simple_poly.rs` — build a basic polyphonic synth voice
+- `examples/cpal_scope.rs` — real-time oscilloscope visualization
 - `examples/cpal_demo.rs` — run the real-time interactive demo (`--features cpal-demo`)
 
 run with:
@@ -124,9 +128,14 @@ src/
 ### key concepts
 
 **graph nodes**: building blocks that implement the `GraphNode` trait
-- `OscNode` – oscillators (sine, saw, square, noise)
+- `OscNode` – oscillators (sine, saw, square, triangle, noise)
 - `EnvNode` – adsr envelope
+- `FilterNode` – tpt svf with modulatable cutoff and resonance
+- `LfoNode` – low-frequency oscillator for modulation
+- `DelayNode` – modulatable delay line
 - `Amplify` – multiplies two signals for mixing or modulation
+- `Through` – serial signal processing
+- `Modulate` – applies modulation to node parameters
 
 **polyphony**: fixed voice pool with automatic allocation
 - voice stealing (oldest releasing voice)
@@ -145,13 +154,14 @@ coverage today includes oscillator phase wrapping, sine accuracy, and polysynth 
 
 ## roadmap
 
-currently exploring:
-- **filters**: lowpass, highpass, and bandpass shapes for sculpting tone
-- **presets**: ready-made patches you can tweak and share
-- **lfos**: modulation sources for movement over time
-- **sequencing tools**: richer pattern building beyond single notes
+next up:
+- **`.mix()` combinator**: parallel signal routing for layering voices and wet/dry blending
+- **effect helpers**: chorus/flanger presets built from delay + lfo combinations
+- **voice profiles**: ready-made patches (kick, snare, bass, lead) you can tweak and share
+- **midi integration**: keyboard input via `midir` for live performance
+- **track/arrangement system**: pattern-based sequencing beyond single notes
 
-longer-term dreams include wavetables, effects (delay/reverb), richer examples, and maybe a playful terminal ui.
+longer-term dreams include wavetables, reverb, richer examples, and maybe a playful terminal ui.
 
 ## license
 

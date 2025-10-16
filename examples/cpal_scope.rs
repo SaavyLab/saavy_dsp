@@ -1,4 +1,4 @@
-use color_eyre::eyre::{Result as EyreResult, WrapErr, eyre};
+use color_eyre::eyre::{eyre, Result as EyreResult, WrapErr};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -13,11 +13,11 @@ use saavy_dsp::{
     graph::{
         delay::{DelayNode, DelayParam},
         extensions::NodeExt,
+        filter::FilterNode,
         lfo::LfoNode,
         oscillator::OscNode,
     },
     synth::{
-        factory::VoiceFactory,
         message::SynthMessage,
         poly::{PolySynth, VoiceEnvelope},
         voice::VoiceState,
@@ -70,17 +70,23 @@ fn run(mut terminal: DefaultTerminal) -> EyreResult<()> {
     let channels = config.channels() as usize;
 
     // --- Cross-thread rings ---
-    let (mut msg_tx, msg_rx) = RingBuffer::<SynthMessage>::new(64);
-    let (mut audio_tx, mut audio_rx) = RingBuffer::<f32>::new(VIS_BLOCK_LEN * AUDIO_RING_BLOCKS);
-    let (mut env_tx, mut env_rx) = RingBuffer::<Vec<VoiceEnvelope>>::new(32);
+    let (msg_tx, msg_rx) = RingBuffer::<SynthMessage>::new(64);
+    let (audio_tx, mut audio_rx) = RingBuffer::<f32>::new(VIS_BLOCK_LEN * AUDIO_RING_BLOCKS);
+    let (env_tx, mut env_rx) = RingBuffer::<Vec<VoiceEnvelope>>::new(32);
 
     // --- Voice factory (sound design) ---
     let factory = || {
-        let osc = OscNode::sawtooth();
+        let osc = OscNode::sine();
         let env = saavy_dsp::graph::envelope::EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
-        let lfo_dly = LfoNode::sine(0.5);
+        let osc_saw = OscNode::sawtooth();
+        let lfo_dly = LfoNode::sawtooth(0.5);
         let delay = DelayNode::new(30.0, 0.2, 0.4).modulate(lfo_dly, DelayParam::DelayTime, 10.0);
-        osc.amplify(env).through(delay)
+        let lowpass = FilterNode::lowpass(1000.0);
+
+        osc.mix(osc_saw, 0.5)
+            .amplify(env)
+            .through(lowpass)
+            .through(delay)
     };
 
     // Buffer reused by audio callback
@@ -89,52 +95,52 @@ fn run(mut terminal: DefaultTerminal) -> EyreResult<()> {
     // Move into callback
     let stream = device
         .build_output_stream(
-        &config.into(),
-        {
-            let mut synth = PolySynth::new(sample_rate, 4, factory, msg_rx);
-            let mut audio_tx = audio_tx;
-            let mut env_tx = env_tx;
-            let mut env_scratch: Vec<VoiceEnvelope> = Vec::with_capacity(8);
-            move |data: &mut [f32], _| {
-                let total_frames = data.len() / channels;
-                let mut frames_written = 0;
-                while frames_written < total_frames {
-                    let frames_remaining = total_frames - frames_written;
-                    let frames_to_render = frames_remaining.min(MAX_BLOCK_SIZE);
+            &config.into(),
+            {
+                let mut synth = PolySynth::new(sample_rate, 4, factory, msg_rx);
+                let mut audio_tx = audio_tx;
+                let mut env_tx = env_tx;
+                let mut env_scratch: Vec<VoiceEnvelope> = Vec::with_capacity(8);
+                move |data: &mut [f32], _| {
+                    let total_frames = data.len() / channels;
+                    let mut frames_written = 0;
+                    while frames_written < total_frames {
+                        let frames_remaining = total_frames - frames_written;
+                        let frames_to_render = frames_remaining.min(MAX_BLOCK_SIZE);
 
-                    let block = &mut render_buf[..frames_to_render];
-                    synth.render_block(block);
+                        let block = &mut render_buf[..frames_to_render];
+                        synth.render_block(block);
 
-                    // Duplicate mono to all channels and write to device
-                    let out_off = frames_written * channels;
-                    for (i, &s) in block.iter().enumerate() {
-                        for ch in 0..channels {
-                            data[out_off + i * channels + ch] = s;
+                        // Duplicate mono to all channels and write to device
+                        let out_off = frames_written * channels;
+                        for (i, &s) in block.iter().enumerate() {
+                            for ch in 0..channels {
+                                data[out_off + i * channels + ch] = s;
+                            }
                         }
-                    }
 
-                    // Push mono block to UI ring, non-blocking (drop on overflow)
-                    for &s in block.iter() {
-                        if let Err(PushError::Full(_)) = audio_tx.push(s) {
-                            break; // drop remainder if full
+                        // Push mono block to UI ring, non-blocking (drop on overflow)
+                        for &s in block.iter() {
+                            if let Err(PushError::Full(_)) = audio_tx.push(s) {
+                                break; // drop remainder if full
+                            }
                         }
-                    }
 
-                    // Collect envelopes snapshot and send to UI (non-blocking)
-                    env_scratch.clear();
-                    synth.collect_voice_envelopes(&mut env_scratch);
-                    if !env_scratch.is_empty() {
-                        let _ = env_tx.push(env_scratch.clone());
-                    }
+                        // Collect envelopes snapshot and send to UI (non-blocking)
+                        env_scratch.clear();
+                        synth.collect_voice_envelopes(&mut env_scratch);
+                        if !env_scratch.is_empty() {
+                            let _ = env_tx.push(env_scratch.clone());
+                        }
 
-                    frames_written += frames_to_render;
+                        frames_written += frames_to_render;
+                    }
                 }
-            }
-        },
-        move |err| eprintln!("Stream error: {err}"),
-        None,
-    )
-    .wrap_err("failed to build output stream")?;
+            },
+            move |err| eprintln!("Stream error: {err}"),
+            None,
+        )
+        .wrap_err("failed to build output stream")?;
 
     stream.play().wrap_err("failed to start output stream")?;
 
@@ -193,7 +199,13 @@ fn run(mut terminal: DefaultTerminal) -> EyreResult<()> {
 
         // Draw
         terminal.draw(|frame| {
-            render_ui(frame, &vis_buffer, sample_rate, spectrum.data(), &env_history);
+            render_ui(
+                frame,
+                &vis_buffer,
+                sample_rate,
+                spectrum.data(),
+                &env_history,
+            );
         })?;
 
         // Exit on key press
@@ -245,7 +257,11 @@ fn render_ui(
         .graph_type(GraphType::Line)
         .style(Style::default().fg(Color::Cyan))
         .data(&pts)])
-    .block(Block::default().title("Oscilloscope - Press any key to quit").borders(Borders::ALL))
+    .block(
+        Block::default()
+            .title("Oscilloscope - Press any key to quit")
+            .borders(Borders::ALL),
+    )
     .x_axis(
         Axis::default()
             .title("Sample")
@@ -266,8 +282,8 @@ fn render_ui(
         format!("Frames: {}", buffer.len()).into(),
         format!("Sample Rate: {:.1} Hz", sample_rate).into(),
     ];
-    let info = Paragraph::new(info_lines)
-        .block(Block::default().title("Info").borders(Borders::ALL));
+    let info =
+        Paragraph::new(info_lines).block(Block::default().title("Info").borders(Borders::ALL));
 
     // Envelope panel
     let envelope_traces = envelopes.build_traces();
@@ -291,7 +307,11 @@ fn render_ui(
 
     let envelope_chart = Chart::new(envelope_datasets)
         .block(Block::default().title("Envelopes").borders(Borders::ALL))
-        .x_axis(Axis::default().title("Frames").bounds([0.0, envelopes.capacity() as f64]))
+        .x_axis(
+            Axis::default()
+                .title("Frames")
+                .bounds([0.0, envelopes.capacity() as f64]),
+        )
         .y_axis(Axis::default().title("Level").bounds([0.0, 1.0]));
 
     frame.render_widget(wave, main_chunks[0]);

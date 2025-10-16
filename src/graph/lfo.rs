@@ -42,7 +42,7 @@ impl LfoNode {
         }
     }
 
-    pub fn saw(frequency: f32) -> Self {
+    pub fn sawtooth(frequency: f32) -> Self {
         Self {
             osc: OscillatorBlock::sawtooth(),
             frequency,
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_lfo_saw_output_range() {
-        let mut lfo = LfoNode::saw(7.0);
+        let mut lfo = LfoNode::sawtooth(7.0);
         let mut buffer = vec![0.0; 1024];
         let ctx = RenderCtx::from_freq(48000.0, 440.0, 1.0);
 

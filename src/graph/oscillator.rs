@@ -20,6 +20,11 @@ impl OscNode {
         let osc = OscillatorBlock::square();
         Self { osc }
     }
+
+    pub fn triangle() -> Self {
+        let osc = OscillatorBlock::triangle();
+        Self { osc }
+    }
 }
 
 impl GraphNode for OscNode {

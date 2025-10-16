@@ -1,5 +1,6 @@
 use crate::graph::{
     amplify::Amplify,
+    mix::Mix,
     modulate::Modulate,
     node::{GraphNode, Modulatable},
     through::Through,
@@ -19,6 +20,10 @@ pub trait NodeExt: GraphNode + Sized {
         Self: Modulatable,
     {
         Modulate::new(self, lfo, param, depth)
+    }
+
+    fn mix<M: GraphNode>(self, source: M, balance: f32) -> Mix<Self, M> {
+        Mix::new(self, source, balance)
     }
 }
 
