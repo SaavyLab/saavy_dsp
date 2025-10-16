@@ -7,6 +7,7 @@ pub mod envelope;
 pub mod extensions;
 pub mod filter;
 pub mod lfo;
+pub mod mix;
 pub mod modulate;
 pub mod node;
 pub mod oscillator;

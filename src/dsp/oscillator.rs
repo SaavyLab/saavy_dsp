@@ -1,6 +1,6 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use std::f32::consts::TAU;
+use std::f32::consts::{PI, TAU};
 
 use crate::graph::node::RenderCtx;
 
@@ -69,7 +69,6 @@ impl OscillatorBlock {
 
     pub fn next_sample(&mut self) -> f32 {
         match self.waveform {
-            OscillatorWaveform::Triangle => todo!("Implement triangle synthesis"),
             OscillatorWaveform::Sine => self.phase.sin(),
             // normalized phase in [0,1]: phi = phase / TAU
             OscillatorWaveform::Sawtooth => {
@@ -84,6 +83,10 @@ impl OscillatorBlock {
                 } else {
                     -1.0
                 }
+            }
+            OscillatorWaveform::Triangle => {
+                let phi = self.phase / TAU;
+                (phi / PI - 1.0).abs() * 2.0 - 1.0
             }
             OscillatorWaveform::Noise => self.next_noise(),
         }

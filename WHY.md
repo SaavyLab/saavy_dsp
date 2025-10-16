@@ -2,32 +2,35 @@
 
 ## overview
 
-An independent study in digital sound synthesis and signal processing.
-It's not a product or a plugin — it's an exploration of how sound works under the hood, built through code.
+an independent study in digital sound synthesis with two intertwined goals:
+1. to build an **approachable, creative toolkit** for making music in rust—an "op-1 of dsps"
+2. to ground that toolkit in a **living implementation** of classic dsp principles
+
+it's not a product—it's an exploration of how a robust technical foundation can unlock playful, intuitive sound design.
 
 ## the focus
 
-- Learn real-time DSP fundamentals by **building** small, verifiable tools
-- Develop a **rust-based DSP core** capable of real synthesis (no soundfonts)
-- Deepen understanding of audio at the physical + computational level
-- Eventually integrate insights back into broader music projects (e.g. orpheus)
+- **for the creator**: build a fluent, composable api that makes sound design feel like play
+- **for the learner**: provide clear rust implementations where each component demonstrates foundational dsp concepts
+- **unite the two**: create a library where you can seamlessly move between playfully designing a sound and deeply understanding the physics and math that make it work
 
 ## motivation
 
-Not everything has to serve a roadmap.
-This exists because sound is interesting — and because building something that *makes* sound is a different kind of literacy than building something that *plays* it.
+great tools are often a blend of simplicity and depth. this project exists to find that balance. the "op-1" spirit drives the user-facing api—making it fun, immediate, and inspiring. the "living guidebook" spirit drives the core—making it stable, correct, and educational.
+
+you don't have to choose between a tool that's easy to use and a tool that's easy to understand. we're building both, in one place.
 
 **Goals:**
-- Reach a working, minimal synthesizer: oscillators, envelopes, filters, LFOs
-- Understand the math behind filters, oscillators, and envelopes, not just use them
-- Replace dependency on sample-based playback with procedural sound generation
-- Publish open-source DSP crates that feel clean, modern, and idiomatic Rust
+- reach a working, minimal synthesizer with an intuitive, chainable api
+- ensure every component is a clear, verifiable implementation of classic dsp principles
+- replace dependency on sample-based playback with procedural sound generation
+- publish open-source dsp crates that feel clean, modern, and idiomatic rust
 
 ## non-goals
 
-- No focus on UI/UX, VST shells, or end-user polish
-- No premature optimization for mobile
-- No "music theory" ambitions — this is physics + math, not pedagogy
+- no focus on ui/ux, vst shells, or end-user polish (yet)
+- no premature optimization for mobile
+- no "music theory" ambitions — this is physics + math through a creative lens
 
 ## scope
 
@@ -39,13 +42,13 @@ This exists because sound is interesting — and because building something that
 
 ## learning trajectory
 
-1. ✅ **waveforms:** sine, saw, square, noise — **DONE**
+1. ✅ **waveforms:** sine, saw, square, triangle, noise — **DONE**
 2. ✅ **envelopes:** ADSR with lock-free control — **DONE**
-3. 🔄 **filters:** TPT SVF (lowpass, highpass, bandpass) — IN PROGRESS
-4. ⏳ **modulation:** LFO routing + sample-accurate automation — TODO
+3. ✅ **filters:** TPT SVF (lowpass, highpass, bandpass, notch) — **DONE**
+4. ✅ **modulation:** LFO routing + modulatable delay — **DONE**
 5. ✅ **voice management:** note on/off, voice stealing — **DONE**
 6. ✅ **integration:** real-time audio via CPAL — **DONE**
-7. ⏳ **analysis tools:** visualize waveforms / spectra — TODO
+7. 🔄 **analysis tools:** oscilloscope visualization working — **DONE**, spectrum analyzer TODO
 
 ## success criteria
 
@@ -54,21 +57,27 @@ This exists because sound is interesting — and because building something that
 - ✅ Clean examples demonstrating features
 - 🔄 Open-source release under `SaavyLab` — publishing soon
 
-## current milestone: ADSR + Polyphony
+## current milestone: Complete Subtractive Synthesis Engine
 
 **What works:**
+- Complete oscillator set (sine, saw, square, triangle, noise)
 - ADSR envelope with all phases (Attack, Decay, Sustain, Release)
+- TPT State Variable Filter with modulatable cutoff/resonance (LP/HP/BP/Notch)
+- LFO with multiple waveforms for modulation
+- Modulatable delay line
 - Lock-free message passing for real-time control (`rtrb`)
 - Polyphonic voice management (allocation, stealing, mixing)
-- Graph-based composition (`.amplify()` combinator)
+- Graph combinators: `.amplify()`, `.through()`, `.modulate()`
 - Real-time audio callback via CPAL
+- Oscilloscope visualization (`cpal_scope.rs`)
 - Comprehensive test coverage
 
 **What's next:**
-- TPT State Variable Filter (LP/HP/BP)
-- LFO modulation sources
+- `.mix()` combinator for parallel signal routing
+- Effect helpers (chorus/flanger as delay+LFO combinations)
+- Voice profiles (kick, snare, bass, lead presets)
 - MIDI keyboard input via `midir`
-- More graph combinators (`.through()`, `.mix()`)
+- Track/Arrangement system for pattern-based composition
 
 ## why it matters
 
@@ -100,4 +109,4 @@ We're building bottom-up. The low-level pieces (graph nodes, voices) are solid. 
 
 ---
 
-**Status:** Production-ready polyphony, ready for MIDI integration 🎹
+**Status:** Complete subtractive synthesis engine with modulation, ready for effect chains and MIDI integration 🎹

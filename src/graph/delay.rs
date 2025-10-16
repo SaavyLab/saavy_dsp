@@ -159,17 +159,24 @@ mod tests {
         delay.render_block(&mut buffer, &ctx);
 
         // Should see impulse delayed by ~480 samples
-        assert!(buffer[0].abs() < 0.1, "First sample should be mostly dry (but wet only, so ~0)");
+        assert!(
+            buffer[0].abs() < 0.1,
+            "First sample should be mostly dry (but wet only, so ~0)"
+        );
 
         // Peak should be around sample 480
-        let peak_pos = buffer.iter()
+        let peak_pos = buffer
+            .iter()
             .enumerate()
             .max_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
             .map(|(i, _)| i)
             .unwrap();
 
-        assert!((peak_pos as i32 - 480).abs() < 50,
-                "Peak should be near 480 samples, got {}", peak_pos);
+        assert!(
+            (peak_pos as i32 - 480).abs() < 50,
+            "Peak should be near 480 samples, got {}",
+            peak_pos
+        );
     }
 
     #[test]
@@ -185,12 +192,17 @@ mod tests {
 
         // With feedback, we should see multiple echoes
         // Count peaks above threshold
-        let peaks: Vec<_> = buffer.iter()
+        let peaks: Vec<_> = buffer
+            .iter()
             .enumerate()
             .filter(|(_, &v)| v > 0.2)
             .collect();
 
-        assert!(peaks.len() > 1, "Feedback should create multiple echoes, got {} peaks", peaks.len());
+        assert!(
+            peaks.len() > 1,
+            "Feedback should create multiple echoes, got {} peaks",
+            peaks.len()
+        );
     }
 
     #[test]
@@ -202,20 +214,28 @@ mod tests {
         let mut delay_dry = DelayNode::new(10.0, 0.0, 0.0);
         let mut buffer_dry = vec![1.0; 100];
         delay_dry.render_block(&mut buffer_dry, &ctx);
-        assert!((buffer_dry[0] - 1.0).abs() < 0.01, "Dry only should pass signal unchanged");
+        assert!(
+            (buffer_dry[0] - 1.0).abs() < 0.01,
+            "Dry only should pass signal unchanged"
+        );
 
         // Wet only (mix = 1.0)
         let mut delay_wet = DelayNode::new(10.0, 0.0, 1.0);
         let mut buffer_wet = vec![1.0; 100];
         delay_wet.render_block(&mut buffer_wet, &ctx);
-        assert!(buffer_wet[0].abs() < 0.1, "Wet only should be delayed (near zero initially)");
+        assert!(
+            buffer_wet[0].abs() < 0.1,
+            "Wet only should be delayed (near zero initially)"
+        );
 
         // 50/50 mix
         let mut delay_mix = DelayNode::new(10.0, 0.0, 0.5);
         let mut buffer_mix = vec![1.0; 100];
         delay_mix.render_block(&mut buffer_mix, &ctx);
-        assert!(buffer_mix[0] > 0.4 && buffer_mix[0] < 0.6,
-                "50/50 mix should blend dry and wet");
+        assert!(
+            buffer_mix[0] > 0.4 && buffer_mix[0] < 0.6,
+            "50/50 mix should blend dry and wet"
+        );
     }
 
     #[test]
