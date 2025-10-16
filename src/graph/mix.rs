@@ -1,9 +1,74 @@
 use crate::{graph::node::GraphNode, MAX_BLOCK_SIZE};
 
+/*
+Parallel Signal Mixing
+======================
+
+The Mix node combines two audio signals in parallel using linear crossfading.
+This is the additive counterpart to the Amplify node (which multiplies signals).
+
+How it works:
+1. Render source A into the output buffer
+2. Render source B into a temporary buffer
+3. Apply weighted sum: output = (A × weight_a) + (B × weight_b)
+   where weight_a = 1.0 - balance
+   and   weight_b = balance
+
+Linear vs. Equal-Power Crossfading:
+-----------------------------------
+This implementation uses LINEAR crossfading for simplicity and predictability.
+
+Linear (current implementation):
+  - balance = 0.0 → 100% A, 0% B
+  - balance = 0.5 → 50% A, 50% B (both signals at half amplitude)
+  - balance = 1.0 → 0% A, 100% B
+  - Pro: Simple, predictable math
+  - Con: Perceived loudness dip in the middle (50/50 is quieter than 100% A or 100% B)
+
+Equal-power (not implemented):
+  - Uses sqrt() curves to maintain constant perceived loudness
+  - balance = 0.5 → ~70.7% A, ~70.7% B (sqrt(0.5) ≈ 0.707)
+  - Pro: More constant perceived loudness during crossfade
+  - Con: Slightly more CPU (two sqrt calls per block)
+
+For most musical applications (layering oscillators, wet/dry mixing), linear
+crossfading is perfectly adequate. If you need equal-power, apply it at the
+control level before calling .mix().
+
+Use Cases:
+----------
+- Layering oscillators (detuned saws, supersaw)
+- Multi-timbral voices (sine + square for thickness)
+- Wet/dry mixing (dry signal + effect signal)
+- Parallel processing chains
+
+Example usage:
+  let osc1 = OscNode::sine();
+  let osc2 = OscNode::sawtooth();
+
+  // Equal mix (50/50)
+  let mixed = osc1.mix(osc2, 0.5);
+
+  // Mostly osc1, a bit of osc2 for color
+  let blend = osc1.mix(osc2, 0.2);  // 80% osc1, 20% osc2
+
+  // Wet/dry for effects
+  let dry = OscNode::sine();
+  let wet = OscNode::sine().through(FilterNode::lowpass(800.0));
+  let fx_mix = dry.mix(wet, 0.3);  // 70% dry, 30% wet
+
+Important: Both sources receive note_on/note_off events. If you only want
+one source to be gated by an envelope, apply the envelope AFTER mixing:
+
+  osc1.mix(osc2, 0.5).amplify(env)  // ✓ Envelope gates both
+
+  osc1.amplify(env).mix(osc2, 0.5)  // ✗ Only osc1 is gated, osc2 drones
+*/
+
 pub struct Mix<A, B> {
     pub source_a: A,
     pub source_b: B,
-    pub balance: f32, // 0.5 = equal, 0.0 = all A, 1.0 = all B
+    pub balance: f32, // 0.0 = all A, 1.0 = all B, 0.5 = equal mix
     temp_buffer: Vec<f32>,
 }
 
@@ -27,9 +92,9 @@ impl<S: GraphNode, M: GraphNode> GraphNode for Mix<S, M> {
 
         self.source_b.render_block(frames, ctx);
 
+        let weight_a = 1.0 - self.balance;
+        let weight_b = self.balance;
         for (o, b) in out.iter_mut().zip(frames.iter()) {
-            let weight_a = 1.0 - self.balance;
-            let weight_b = self.balance;
             *o = (*o * weight_a) + (*b * weight_b);
         }
     }

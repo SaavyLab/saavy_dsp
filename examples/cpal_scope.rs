@@ -76,7 +76,7 @@ fn run(mut terminal: DefaultTerminal) -> EyreResult<()> {
 
     // --- Voice factory (sound design) ---
     let factory = || {
-        let osc = OscNode::sine();
+        let osc = OscNode::triangle();
         let env = saavy_dsp::graph::envelope::EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
         let osc_saw = OscNode::sawtooth();
         let lfo_dly = LfoNode::sawtooth(0.5);
