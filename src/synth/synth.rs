@@ -30,12 +30,7 @@ impl<F: VoiceFactory, R: MessageReceiver> Synth<F, R> {
     /// * `max_voices` - Maximum number of simultaneous voices
     /// * `factory` - Factory that creates voices with your sound design
     /// * `rx` - Message queue for MIDI events
-    pub fn new(
-        sample_rate: f32,
-        max_voices: usize,
-        factory: F,
-        rx: R,
-    ) -> Self {
+    pub fn new(sample_rate: f32, max_voices: usize, factory: F, rx: R) -> Self {
         let voices = (0..max_voices)
             .map(|_| Voice::new(factory.create_voice(), sample_rate))
             .collect();
