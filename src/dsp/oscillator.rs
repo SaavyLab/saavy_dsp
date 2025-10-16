@@ -86,7 +86,11 @@ impl OscillatorBlock {
             }
             OscillatorWaveform::Triangle => {
                 let phi = self.phase / TAU;
-                (phi / PI - 1.0).abs() * 2.0 - 1.0
+                // 1. Start with a sawtooth wave from -1.0 to 1.0
+                let sawtooth = (2.0 * phi) - 1.0;
+                // 2. Take its absolute value to create a V-shape from 1.0 down to 0.0 and back up.
+                // 3. Scale and shift to get the final triangle wave from 1.0 down to -1.0 and back up.
+                2.0 * sawtooth.abs() - 1.0
             }
             OscillatorWaveform::Noise => self.next_noise(),
         }

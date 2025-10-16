@@ -12,7 +12,7 @@ impl<A, B> Mix<A, B> {
         Mix {
             source_a,
             source_b,
-            balance,
+            balance: balance.clamp(0.0, 1.0),
             temp_buffer: vec![0.0; MAX_BLOCK_SIZE],
         }
     }
