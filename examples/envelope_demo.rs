@@ -3,7 +3,7 @@
 use rtrb::RingBuffer;
 use saavy_dsp::{
     graph::{envelope::EnvNode, extensions::NodeExt, oscillator::OscNode},
-    synth::{message::SynthMessage, poly::PolySynth},
+    synth::{message::SynthMessage, synth::Synth},
     MAX_BLOCK_SIZE,
 };
 
@@ -34,7 +34,7 @@ fn main() {
     };
 
     // Create synth
-    let mut synth = PolySynth::new(sample_rate, max_voices, factory, rx);
+    let mut synth = Synth::new(sample_rate, max_voices, factory, rx);
 
     // Trigger note on!
     let _ = tx.push(SynthMessage::NoteOn {

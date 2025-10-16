@@ -1,9 +1,7 @@
-use rtrb::Consumer;
-
 use crate::{
     synth::{
         factory::VoiceFactory,
-        message::SynthMessage,
+        message::{MessageReceiver, SynthMessage},
         voice::{Voice, VoiceState},
     },
     MAX_BLOCK_SIZE,
@@ -17,14 +15,14 @@ pub struct VoiceEnvelope {
 }
 
 /// Polyphonic synthesizer - manages multiple voices of any type
-pub struct PolySynth<F: VoiceFactory> {
+pub struct Synth<F: VoiceFactory, R: MessageReceiver> {
     voices: Vec<Voice<F::Voice>>,
-    rx: Consumer<SynthMessage>,
+    rx: R,
     temp_buffer: Vec<f32>,
     frame_counter: u64,
 }
 
-impl<F: VoiceFactory> PolySynth<F> {
+impl<F: VoiceFactory, R: MessageReceiver> Synth<F, R> {
     /// Create a new polyphonic synth
     ///
     /// # Arguments
@@ -36,7 +34,7 @@ impl<F: VoiceFactory> PolySynth<F> {
         sample_rate: f32,
         max_voices: usize,
         factory: F,
-        rx: Consumer<SynthMessage>,
+        rx: R,
     ) -> Self {
         let voices = (0..max_voices)
             .map(|_| Voice::new(factory.create_voice(), sample_rate))
@@ -60,7 +58,7 @@ impl<F: VoiceFactory> PolySynth<F> {
         );
 
         // Process control messages
-        while let Ok(msg) = self.rx.pop() {
+        while let Some(msg) = self.rx.pop() {
             match msg {
                 SynthMessage::NoteOn { note, velocity } => {
                     let age = self.frame_counter;

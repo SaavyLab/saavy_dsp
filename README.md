@@ -91,12 +91,55 @@ fn main() {
 }
 ```
 
+## building effects
+
+the composable graph api makes classic effects simple to build. here are a few common patterns:
+
+### chorus
+
+creates an ensemble effect with slow delay modulation:
+
+```rust
+let lfo = LfoNode::sine(1.0);                    // slow modulation (1 Hz)
+let delay = DelayNode::new(15.0, 0.0, 0.5);      // short delay, no feedback
+let chorus = delay.modulate(lfo, DelayParam::DelayTime, 10.0);
+
+// in a voice:
+osc.amplify(env).through(chorus)
+```
+
+### flanger
+
+faster, shorter modulation with feedback for a "jet plane" sweep:
+
+```rust
+let lfo = LfoNode::sine(0.5);                    // medium-speed sweep
+let delay = DelayNode::new(5.0, 0.6, 0.7);       // very short, high feedback
+let flanger = delay.modulate(lfo, DelayParam::DelayTime, 3.0);
+
+osc.amplify(env).through(flanger)
+```
+
+### vibrato
+
+pitch wobble via delay time modulation:
+
+```rust
+let lfo = LfoNode::sine(5.0);                    // faster vibrato (5 Hz)
+let delay = DelayNode::new(0.0, 0.0, 1.0);       // wet only, no feedback
+let vibrato = delay.modulate(lfo, DelayParam::DelayTime, 2.0);
+
+osc.amplify(env).through(vibrato)
+```
+
+these are just starting points—tweak the parameters or combine multiple effects to create your own signature sounds.
+
 ## examples
 
 - `examples/envelope_demo.rs` — visualize adsr phases
 - `examples/polyphony_demo.rs` — inspect voice allocation and stealing
 - `examples/simple_poly.rs` — build a basic polyphonic synth voice
-- `examples/cpal_scope.rs` — real-time oscilloscope visualization
+- `examples/cpal_scope.rs` — real-time oscilloscope visualization (includes chorus effect)
 - `examples/cpal_demo.rs` — run the real-time interactive demo (`--features cpal-demo`)
 
 run with:
@@ -104,7 +147,7 @@ run with:
 ```bash
 cargo run --example envelope_demo
 cargo run --example simple_poly
-cargo run --features cpal-demo --example cpal_demo
+cargo run --features cpal-demo --example cpal_scope
 ```
 
 ## cargo features
@@ -155,8 +198,6 @@ coverage today includes oscillator phase wrapping, sine accuracy, and polysynth 
 ## roadmap
 
 next up:
-- **`.mix()` combinator**: parallel signal routing for layering voices and wet/dry blending
-- **effect helpers**: chorus/flanger presets built from delay + lfo combinations
 - **voice profiles**: ready-made patches (kick, snare, bass, lead) you can tweak and share
 - **midi integration**: keyboard input via `midir` for live performance
 - **track/arrangement system**: pattern-based sequencing beyond single notes
