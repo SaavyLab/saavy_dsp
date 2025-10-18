@@ -1,5 +1,8 @@
 use std::f32::consts::TAU;
 
+#[cfg_attr(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::graph::node::RenderCtx;
 
 /*

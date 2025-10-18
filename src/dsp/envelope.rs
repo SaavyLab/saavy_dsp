@@ -176,3 +176,60 @@ impl Envelope {
         self.state
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::node::RenderCtx;
+
+    const SAMPLE_RATE: f32 = 1_000.0;
+
+    fn render_samples(env: &mut Envelope, samples: usize) {
+        let ctx = RenderCtx::from_freq(SAMPLE_RATE, 440.0, 1.0);
+        for _ in 0..samples {
+            env.next_sample(&ctx);
+        }
+    }
+
+    #[test]
+    fn attack_reaches_full_level() {
+        let mut env = Envelope::adsr(0.01, 0.1, 0.7, 0.2);
+        let ctx = RenderCtx::from_freq(SAMPLE_RATE, 220.0, 1.0);
+
+        env.note_on(&ctx);
+        render_samples(&mut env, (0.01 * SAMPLE_RATE) as usize);
+
+        assert!(env.level() > 0.99, "expected attack to reach full level");
+        assert!(!matches!(env.state(), EnvelopeState::Attack));
+    }
+
+    #[test]
+    fn sustain_holds_target_level() {
+        let sustain = 0.6;
+        let mut env = Envelope::adsr(0.01, 0.05, sustain, 0.2);
+        let ctx = RenderCtx::from_freq(SAMPLE_RATE, 440.0, 1.0);
+
+        env.note_on(&ctx);
+        let attack_decay_samples = ((0.01 + 0.05) * SAMPLE_RATE) as usize + 5;
+        render_samples(&mut env, attack_decay_samples);
+
+        assert!(matches!(env.state(), EnvelopeState::Sustain));
+        assert!((env.level() - sustain).abs() < 0.05, "sustain level should be held");
+    }
+
+    #[test]
+    fn release_falls_back_to_idle() {
+        let release = 0.03;
+        let mut env = Envelope::adsr(0.01, 0.05, 0.5, release);
+        let ctx = RenderCtx::from_freq(SAMPLE_RATE, 440.0, 1.0);
+
+        env.note_on(&ctx);
+        render_samples(&mut env, (0.02 * SAMPLE_RATE) as usize);
+
+        env.note_off(&ctx);
+        render_samples(&mut env, (release * SAMPLE_RATE) as usize + 2);
+
+        assert!(env.level() <= 0.001, "release should fall back to zero");
+        assert!(matches!(env.state(), EnvelopeState::Idle));
+    }
+}
