@@ -21,9 +21,9 @@ serde = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
 color-eyre = "0.6.3"
-crossterm = "0.28.1"
+crossterm = "0.29.0"
 ratatui = "0.29.0"
-cpal = "0.15"
+cpal = "0.16"
 rustfft = "6"
 
 [build-dependencies]

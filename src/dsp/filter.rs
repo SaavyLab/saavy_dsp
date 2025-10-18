@@ -11,7 +11,6 @@ use crate::graph::node::RenderCtx;
 | notch / band-stop | LPF + HPF (parallel) | outside         | between      |
 */
 
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, Copy)]
 pub enum FilterType {
     LowPass,
