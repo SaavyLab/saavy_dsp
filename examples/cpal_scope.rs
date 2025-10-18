@@ -77,10 +77,10 @@ fn run(mut terminal: DefaultTerminal) -> EyreResult<()> {
 
     // --- Voice factory (sound design) ---
     let factory = || {
-        let osc = OscNode::triangle();
-        let env = EnvNode::adsr(0.05, 0.1, 0.6, 0.2);
-        let osc_saw = OscNode::sawtooth();
-        let lfo_dly = LfoNode::sawtooth(0.5);
+        let osc = OscNode::sawtooth();
+        let env = EnvNode::adsr(0.8, 0.01, 0.6, 0.2);
+        let osc_saw = OscNode::triangle();
+        let lfo_dly = LfoNode::sine(0.5);
         let delay = DelayNode::new(30.0, 0.2, 0.4).modulate(lfo_dly, DelayParam::DelayTime, 10.0);
         let lowpass = FilterNode::lowpass(1000.0);
 

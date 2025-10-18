@@ -1,8 +1,5 @@
 use std::f32::consts::TAU;
 
-#[cfg_attr(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 use crate::graph::node::RenderCtx;
 
 /*
@@ -14,7 +11,6 @@ use crate::graph::node::RenderCtx;
 | notch / band-stop | LPF + HPF (parallel) | outside         | between      |
 */
 
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, Copy)]
 pub enum FilterType {
     LowPass,
