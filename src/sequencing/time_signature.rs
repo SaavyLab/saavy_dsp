@@ -26,6 +26,13 @@ impl TimeSignature {
         tactus_group: 2,
     };
 
+    /// 2/4 time (march, simple duple meter)
+    pub const TWO_FOUR: TimeSignature = TimeSignature {
+        numerator: 2,
+        denominator: 4,
+        tactus_group: 2,
+    };
+
     /// 6/8 time (compound duple meter)
     /// Tactus = dotted quarter (3 eighths grouped)
     pub const SIX_EIGHT: TimeSignature = TimeSignature {
