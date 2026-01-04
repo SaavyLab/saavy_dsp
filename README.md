@@ -31,6 +31,7 @@ this is your sketchbook for sound—a place to explore, learn, and create, backe
 - **graph combinators**: `.amplify()`, `.through()`, `.modulate()`
 - **polyphony**: voice allocation, stealing, and mixing baked in
 - **sequencing**: integer timing with proper time signatures, tuplets, and dotted values
+- **pattern api**: concise macro syntax for musical patterns with subdivisions and triplets
 - **real-time audio**: `cpal`-powered interactive demo with oscilloscope visualization
 
 ## quickstart
@@ -68,14 +69,36 @@ fn main() {
 }
 ```
 
-### musical sequencing
+### musical patterns
+
+```rust
+use saavy_dsp::pattern;
+use saavy_dsp::sequencing::*;
+
+fn main() {
+    // concise pattern syntax - brackets subdivide time
+    let arp = pattern!(4/4 => [C4, E4, G4, C5]);           // 4 quarter notes
+    let groove = pattern!(4/4 => [C4, [E4, G4], C5, _]);   // quarter, 2 eighths, quarter, rest
+    let triplet = pattern!(4/4 => [[C4, E4, G4], _, _, _]); // triplet on beat 1
+
+    // chain patterns together
+    let song = arp.repeat(2)
+        .then(groove)
+        .then(triplet);
+
+    // convert to sequence for playback
+    let seq = song.to_sequence(480); // 480 ppq
+}
+```
+
+the pattern api is built on top of the lower-level `Sequence` builder, which gives you fine-grained control when you need it:
 
 ```rust
 use saavy_dsp::sequencing::{Duration, Sequence};
 
 fn main() {
-    // create a rhythm: "1, and-of-2, 4"
-    let seq = Sequence::new(480) // 480 ppq (standard MIDI timing)
+    // explicit timing control
+    let seq = Sequence::new(480)
         .note(Duration::EIGHTH).with_note(36)       // kick on 1
         .rest(Duration::EIGHTH)                      // and
         .rest(Duration::EIGHTH)                      // 2
@@ -84,10 +107,6 @@ fn main() {
         .note(Duration::QUARTER).with_note(36)      // kick on 4
         .build()
         .unwrap();
-
-    // timing is integer ticks only—no float drift
-    // supports compound meters (6/8, 9/8), tuplets, dotted notes
-    // bar validation catches rhythm errors at build time
 }
 ```
 
@@ -139,15 +158,16 @@ these are just starting points—tweak the parameters or combine multiple effect
 - `examples/envelope_demo.rs` — visualize adsr phases
 - `examples/polyphony_demo.rs` — inspect voice allocation and stealing
 - `examples/simple_poly.rs` — build a basic polyphonic synth voice
+- `examples/pattern_player.rs` — play patterns with audio output using the new pattern api
 - `examples/cpal_scope.rs` — real-time oscilloscope visualization (includes chorus effect)
-- `examples/cpal_demo.rs` — run the real-time interactive demo (`--features cpal-demo`)
 
 run with:
 
 ```bash
 cargo run --example envelope_demo
 cargo run --example simple_poly
-cargo run --features cpal-demo --example cpal_scope
+cargo run --example pattern_player
+cargo run --example cpal_scope
 ```
 
 ## cargo features
@@ -198,11 +218,12 @@ coverage today includes oscillator phase wrapping, sine accuracy, and polysynth 
 ## roadmap
 
 next up:
+- **tui binary**: first-class terminal interface with timeline, visualizers, and transport controls
+- **sequencer engine**: sample-accurate playback driven by audio callback
 - **voice profiles**: ready-made patches (kick, snare, bass, lead) you can tweak and share
 - **midi integration**: keyboard input via `midir` for live performance
-- **track/arrangement system**: pattern-based sequencing beyond single notes
 
-longer-term dreams include wavetables, reverb, richer examples, and maybe a playful terminal ui.
+longer-term dreams include wavetables, reverb, multi-track layering, and a daw-lite terminal experience.
 
 ## license
 
