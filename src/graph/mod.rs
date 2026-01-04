@@ -5,6 +5,9 @@
 //! `extensions` module adds fluent helpers so patches can be authored with a
 //! clear, chainable API.
 
+// Re-export core types for convenience
+pub use node::{GraphNode, RenderCtx};
+
 /// Multiply two signals together (amplitude or ring modulation).
 pub mod amplify;
 /// Feedback delay effect with realtime-safe modulation.

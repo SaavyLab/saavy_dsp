@@ -32,4 +32,4 @@ rustfft = "6"
 
 [[bin]]
 name = "saavy"
-path = "src/bin/saavy.rs"
+path = "src/bin/saavy/main.rs"
