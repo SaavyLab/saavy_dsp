@@ -125,6 +125,16 @@ impl Pattern {
         let bar_ticks = self.time_signature.bar_ticks(ppq);
         let slot_count = self.slots.len() as u32;
 
+        // Handle empty pattern - return empty sequence
+        if slot_count == 0 {
+            return Sequence {
+                time_signature: self.time_signature.clone(),
+                ppq,
+                events: Vec::new(),
+                total_ticks: bar_ticks,
+            };
+        }
+
         // Each top-level slot gets an equal portion of the bar
         let ticks_per_slot = bar_ticks / slot_count;
 
@@ -160,6 +170,11 @@ impl Pattern {
                 // Rests don't create events, just consume time
             }
             PatternSlot::Subdivision(sub_slots) => {
+                assert!(
+                    !sub_slots.is_empty(),
+                    "Empty subdivision is not allowed - use PatternSlot::Rest for silence"
+                );
+
                 // Calculate total weight
                 let total_weight: u32 = sub_slots
                     .iter()
@@ -619,5 +634,29 @@ mod tests {
         // Should work with trailing comma
         let p = pattern!(4/4 => [C4, E4, G4, C5,]);
         assert_eq!(p.slots.len(), 4);
+    }
+
+    // Edge case tests
+    #[test]
+    fn test_empty_pattern() {
+        // Empty pattern should not panic, returns empty sequence
+        let p = Pattern::four_four(vec![]);
+        let seq = p.to_sequence(PPQ);
+
+        assert_eq!(seq.events.len(), 0);
+        assert_eq!(seq.total_ticks, 1920); // Still a full bar
+    }
+
+    #[test]
+    #[should_panic(expected = "Empty subdivision is not allowed")]
+    fn test_empty_subdivision_panics() {
+        // Empty subdivision should panic with clear message
+        let p = Pattern::four_four(vec![
+            C4.into(),
+            PatternSlot::Subdivision(vec![]), // empty subdivision - not allowed!
+            G4.into(),
+            PatternSlot::Rest,
+        ]);
+        let _ = p.to_sequence(PPQ); // This should panic
     }
 }
