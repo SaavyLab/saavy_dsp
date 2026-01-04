@@ -1,5 +1,14 @@
 //! Shared state types for UI communication
 
+/// Commands sent from UI thread to audio thread
+#[derive(Clone, Copy, Debug)]
+pub enum ControlMessage {
+    /// Toggle play/pause
+    TogglePlayback,
+    /// Reset to beginning
+    Reset,
+}
+
 /// State sent from audio thread to UI thread
 #[derive(Clone)]
 pub struct UiState {
