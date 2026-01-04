@@ -66,31 +66,51 @@ pub fn render_timeline(frame: &mut Frame, area: Rect, state: &UiState) {
             }),
         ));
 
-        // Pattern blocks
-        let mut pattern_str = String::new();
-        for tick in 0..(timeline_width as u32) {
-            let tick_pos = (tick as f64 / chars_per_tick) as u32;
+        // Build pattern visualization character by character
+        // Use different characters to show note boundaries
+        let base_color = if track.is_active {
+            Color::Cyan
+        } else {
+            Color::DarkGray
+        };
 
-            // Check if any event is active at this tick
-            let is_note_on = track.events.iter().any(|(start, duration)| {
+        // Sort events by start time for proper rendering
+        let mut sorted_events = track.events.clone();
+        sorted_events.sort_by_key(|(start, _)| *start);
+
+        for char_idx in 0..timeline_width {
+            let tick_pos = (char_idx as f64 / chars_per_tick) as u32;
+
+            // Find which event (if any) is active at this tick
+            let active_event = sorted_events.iter().find(|(start, duration)| {
                 tick_pos >= *start && tick_pos < start + duration
             });
 
-            if is_note_on {
-                pattern_str.push('▓');
-            } else {
-                pattern_str.push('░');
-            }
-        }
+            let ch = if let Some((start, duration)) = active_event {
+                // Check if this is the start of the note (first char)
+                let note_start_char = (*start as f64 * chars_per_tick) as u16;
+                let note_end_char = ((*start + *duration) as f64 * chars_per_tick) as u16;
 
-        spans.push(Span::styled(
-            pattern_str,
-            Style::default().fg(if track.is_active {
-                Color::Cyan
+                if char_idx == note_start_char {
+                    // Note attack - bright marker
+                    '█'
+                } else if char_idx + 1 >= note_end_char {
+                    // End of note - add gap
+                    ' '
+                } else {
+                    // Sustain portion
+                    '▓'
+                }
             } else {
-                Color::DarkGray
-            }),
-        ));
+                // Rest/silence
+                '░'
+            };
+
+            spans.push(Span::styled(
+                ch.to_string(),
+                Style::default().fg(base_color),
+            ));
+        }
 
         lines.push(Line::from(spans));
     }
