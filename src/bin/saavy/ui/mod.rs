@@ -17,7 +17,7 @@ use ratatui::{
 use rtrb::Consumer;
 use std::time::Duration;
 
-pub use state::{TrackInfo, UiState};
+pub use state::{ControlMessage, TrackInfo, UiState};
 
 use timeline::render_timeline;
 use transport::render_transport;
@@ -32,6 +32,8 @@ pub struct UiApp {
     audio_rx: Consumer<f32>,
     /// Ring buffer receiver for UI state updates
     state_rx: Consumer<UiState>,
+    /// Ring buffer sender for control messages
+    control_tx: rtrb::Producer<ControlMessage>,
     /// Current UI state (latest received)
     current_state: UiState,
     /// Audio sample buffer for visualization
@@ -45,11 +47,13 @@ impl UiApp {
     pub fn new(
         audio_rx: Consumer<f32>,
         state_rx: Consumer<UiState>,
+        control_tx: rtrb::Producer<ControlMessage>,
         initial_state: UiState,
     ) -> Self {
         Self {
             audio_rx,
             state_rx,
+            control_tx,
             current_state: initial_state,
             audio_buffer: vec![0.0; VIS_BUFFER_SIZE],
             should_quit: false,
@@ -113,7 +117,12 @@ impl UiApp {
             KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                 self.should_quit = true;
             }
-            // TODO: Space for play/pause, R for reset (need control channel)
+            KeyCode::Char(' ') => {
+                let _ = self.control_tx.push(ControlMessage::TogglePlayback);
+            }
+            KeyCode::Char('r') | KeyCode::Char('R') => {
+                let _ = self.control_tx.push(ControlMessage::Reset);
+            }
             _ => {}
         }
     }

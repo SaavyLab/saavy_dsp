@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use super::sequencer::Sequencer;
 use super::track::Track;
-use super::ui::{TrackInfo, UiApp, UiState};
+use super::ui::{ControlMessage, TrackInfo, UiApp, UiState};
 
 use saavy_dsp::{
     graph::GraphNode,
@@ -19,6 +19,8 @@ use saavy_dsp::{
 const AUDIO_RING_SIZE: usize = 16384;
 /// Ring buffer capacity for UI state updates
 const STATE_RING_SIZE: usize = 32;
+/// Ring buffer capacity for control messages
+const CONTROL_RING_SIZE: usize = 64;
 
 /// Main application builder
 pub struct Saavy {
@@ -93,9 +95,10 @@ impl Saavy {
             })
             .collect();
 
-        // Create ring buffers for audio→UI communication
+        // Create ring buffers for audio↔UI communication
         let (audio_tx, audio_rx) = RingBuffer::<f32>::new(AUDIO_RING_SIZE);
         let (state_tx, state_rx) = RingBuffer::<UiState>::new(STATE_RING_SIZE);
+        let (control_tx, control_rx) = RingBuffer::<ControlMessage>::new(CONTROL_RING_SIZE);
 
         // Initial UI state
         let initial_state = UiState::new(self.bpm, self.ppq, total_ticks, track_info);
@@ -113,6 +116,7 @@ impl Saavy {
             total_ticks,
             audio_tx,
             state_tx,
+            control_rx,
         }));
         state.lock().unwrap().sequencer.set_total_ticks(total_ticks);
 
@@ -138,8 +142,17 @@ impl Saavy {
                     total_ticks,
                     audio_tx,
                     state_tx,
+                    control_rx,
                 } = &mut *state;
                 let sample_rate = *sample_rate;
+
+                // Process control messages from UI
+                while let Ok(msg) = control_rx.pop() {
+                    match msg {
+                        ControlMessage::TogglePlayback => sequencer.toggle(),
+                        ControlMessage::Reset => sequencer.reset(),
+                    }
+                }
 
                 while frames_written < total_frames {
                     let frames_remaining = total_frames - frames_written;
@@ -215,7 +228,7 @@ impl Saavy {
 
         // Initialize terminal and run TUI
         let mut terminal = ratatui::init();
-        let mut ui = UiApp::new(audio_rx, state_rx, initial_state);
+        let mut ui = UiApp::new(audio_rx, state_rx, control_tx, initial_state);
         let result = ui.run(&mut terminal);
         ratatui::restore();
 
@@ -239,6 +252,7 @@ struct AudioState {
     total_ticks: u32,
     audio_tx: rtrb::Producer<f32>,
     state_tx: rtrb::Producer<UiState>,
+    control_rx: rtrb::Consumer<ControlMessage>,
 }
 
 /// Trait for types that can be converted to a Sequence
