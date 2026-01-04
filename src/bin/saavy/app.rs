@@ -2,16 +2,23 @@
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use color_eyre::eyre::{eyre, Result as EyreResult, WrapErr};
+use rtrb::RingBuffer;
 use std::sync::{Arc, Mutex};
 
 use super::sequencer::Sequencer;
 use super::track::Track;
+use super::ui::{TrackInfo, UiApp, UiState};
 
 use saavy_dsp::{
     graph::GraphNode,
     sequencing::{Pattern, PatternChain, Sequence},
     MAX_BLOCK_SIZE,
 };
+
+/// Ring buffer capacity for audio samples (enough for ~340ms at 48kHz)
+const AUDIO_RING_SIZE: usize = 16384;
+/// Ring buffer capacity for UI state updates
+const STATE_RING_SIZE: usize = 32;
 
 /// Main application builder
 pub struct Saavy {
@@ -64,38 +71,50 @@ impl Saavy {
         let sample_rate = config.sample_rate().0 as f32;
         let channels = config.channels() as usize;
 
-        println!("=== Saavy ===");
-        println!("BPM: {}", self.bpm);
-        println!("Sample rate: {} Hz", sample_rate);
-        println!("Channels: {}", channels);
-        println!();
-
-        // Calculate total duration from tracks
+        // Calculate total duration and build track info for UI
         let mut total_ticks = 0u32;
-        for track in &self.tracks {
-            println!("  Track: {} ({} events, {} ticks)",
-                track.name,
-                track.sequence.events.len(),
-                track.sequence.total_ticks
-            );
-            total_ticks = total_ticks.max(track.sequence.total_ticks);
-        }
+        let track_info: Vec<TrackInfo> = self
+            .tracks
+            .iter()
+            .map(|track| {
+                total_ticks = total_ticks.max(track.sequence.total_ticks);
+                TrackInfo {
+                    name: track.name.clone(),
+                    is_active: false,
+                    envelope_level: 0.0,
+                    current_note: None,
+                    events: track
+                        .sequence
+                        .events
+                        .iter()
+                        .filter_map(|e| e.note.map(|_| (e.tick_offset, e.duration_ticks)))
+                        .collect(),
+                }
+            })
+            .collect();
 
-        println!();
-        println!("Total duration: {} ticks", total_ticks);
-        println!("Playing... Press Ctrl+C to stop");
-        println!();
+        // Create ring buffers for audio→UI communication
+        let (audio_tx, audio_rx) = RingBuffer::<f32>::new(AUDIO_RING_SIZE);
+        let (state_tx, state_rx) = RingBuffer::<UiState>::new(STATE_RING_SIZE);
+
+        // Initial UI state
+        let initial_state = UiState::new(self.bpm, self.ppq, total_ticks, track_info);
 
         // Create sequencer
-        let mut sequencer = Sequencer::new(self.bpm, self.ppq, sample_rate as f64, self.tracks.len());
-        sequencer.set_total_ticks(total_ticks);
+        let sequencer = Sequencer::new(self.bpm, self.ppq, sample_rate as f64, self.tracks.len());
 
         // Wrap in Arc<Mutex> for sharing with audio thread
         let state = Arc::new(Mutex::new(AudioState {
             tracks: self.tracks,
             sequencer,
             sample_rate,
+            bpm: self.bpm,
+            ppq: self.ppq,
+            total_ticks,
+            audio_tx,
+            state_tx,
         }));
+        state.lock().unwrap().sequencer.set_total_ticks(total_ticks);
 
         // Set up audio stream
         let state_clone = state.clone();
@@ -110,7 +129,16 @@ impl Saavy {
                 let mut frames_written = 0;
 
                 // Destructure to allow simultaneous mutable borrows
-                let AudioState { tracks, sequencer, sample_rate } = &mut *state;
+                let AudioState {
+                    tracks,
+                    sequencer,
+                    sample_rate,
+                    bpm,
+                    ppq,
+                    total_ticks,
+                    audio_tx,
+                    state_tx,
+                } = &mut *state;
                 let sample_rate = *sample_rate;
 
                 while frames_written < total_frames {
@@ -144,8 +172,40 @@ impl Saavy {
                         }
                     }
 
+                    // Push audio samples to UI (non-blocking, drop on overflow)
+                    for &sample in &block[..frames_to_render] {
+                        let _ = audio_tx.push(sample);
+                    }
+
                     frames_written += frames_to_render;
                 }
+
+                // Push UI state update (once per callback, non-blocking)
+                let track_info: Vec<TrackInfo> = tracks
+                    .iter()
+                    .map(|track| TrackInfo {
+                        name: track.name.clone(),
+                        is_active: track.is_active(),
+                        envelope_level: track.envelope_level().unwrap_or(0.0),
+                        current_note: track.current_note(),
+                        events: track
+                            .sequence
+                            .events
+                            .iter()
+                            .filter_map(|e| e.note.map(|_| (e.tick_offset, e.duration_ticks)))
+                            .collect(),
+                    })
+                    .collect();
+
+                let ui_state = UiState {
+                    tick_position: sequencer.tick_position(),
+                    total_ticks: *total_ticks,
+                    bpm: *bpm,
+                    ppq: *ppq,
+                    is_playing: sequencer.is_playing(),
+                    track_info,
+                };
+                let _ = state_tx.push(ui_state);
             },
             |err| eprintln!("Audio error: {}", err),
             None,
@@ -153,11 +213,13 @@ impl Saavy {
 
         stream.play()?;
 
-        // For now, just loop forever
-        // TODO: Add TUI
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
+        // Initialize terminal and run TUI
+        let mut terminal = ratatui::init();
+        let mut ui = UiApp::new(audio_rx, state_rx, initial_state);
+        let result = ui.run(&mut terminal);
+        ratatui::restore();
+
+        result
     }
 }
 
@@ -172,6 +234,11 @@ struct AudioState {
     tracks: Vec<Track>,
     sequencer: Sequencer,
     sample_rate: f32,
+    bpm: f64,
+    ppq: u32,
+    total_ticks: u32,
+    audio_tx: rtrb::Producer<f32>,
+    state_tx: rtrb::Producer<UiState>,
 }
 
 /// Trait for types that can be converted to a Sequence

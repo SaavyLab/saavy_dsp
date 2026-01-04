@@ -81,14 +81,17 @@ impl Track {
     }
 
     /// Check if this track is currently producing sound
-    #[allow(dead_code)]
     pub fn is_active(&self) -> bool {
         self.current_note.is_some() && self.node.is_active()
     }
 
     /// Get the envelope level (for visualization)
-    #[allow(dead_code)]
     pub fn envelope_level(&self) -> Option<f32> {
         self.node.get_envelope_level()
+    }
+
+    /// Get the current note being played (for visualization)
+    pub fn current_note(&self) -> Option<u8> {
+        self.current_note
     }
 }
