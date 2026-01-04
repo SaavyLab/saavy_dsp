@@ -78,3 +78,26 @@ pub trait GraphNode: Send {
         true
     }
 }
+
+/// Allow boxed graph nodes to be used as graph nodes (for dynamic dispatch)
+impl GraphNode for Box<dyn GraphNode> {
+    fn render_block(&mut self, out: &mut [f32], ctx: &RenderCtx) {
+        (**self).render_block(out, ctx)
+    }
+
+    fn note_on(&mut self, ctx: &RenderCtx) {
+        (**self).note_on(ctx)
+    }
+
+    fn note_off(&mut self, ctx: &RenderCtx) {
+        (**self).note_off(ctx)
+    }
+
+    fn get_envelope_level(&self) -> Option<f32> {
+        (**self).get_envelope_level()
+    }
+
+    fn is_active(&self) -> bool {
+        (**self).is_active()
+    }
+}
