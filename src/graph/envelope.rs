@@ -3,6 +3,73 @@ use crate::{
     graph::node::{GraphNode, RenderCtx},
 };
 
+/*
+ADSR Envelope Generator
+=======================
+
+An envelope shapes how a sound evolves over time. Without an envelope, a note
+would instantly appear at full volume and instantly disappear - very unnatural.
+The ADSR envelope is the most common type, modeling how acoustic instruments
+behave.
+
+The Four Stages:
+----------------
+
+  Level
+    ^
+  1 |      /\
+    |     /  \___________
+    |    /               \
+    |   /                 \
+  0 |__/                   \___
+    +--[A]-[D]----[S]-----[R]---> Time
+        │   │      │       │
+        │   │      │       └── Release: fade out after key release
+        │   │      └────────── Sustain: held level while key is down
+        │   └───────────────── Decay: fall to sustain level
+        └───────────────────── Attack: initial rise to peak
+
+Attack (seconds): How quickly the sound reaches full volume.
+  - 0.001-0.01: Percussive, immediate (drums, plucks)
+  - 0.05-0.2:   Soft attack (pads, strings)
+  - 0.5+:       Slow swells (ambient, cinematic)
+
+Decay (seconds): How quickly it falls from peak to sustain level.
+  - 0.01-0.1:   Snappy, punchy (plucks, keys)
+  - 0.2-0.5:    Natural decay (piano-like)
+  - 1.0+:       Slow fade (pads)
+
+Sustain (0.0-1.0): The level held while the key is pressed.
+  - 0.0:        No sustain (fully percussive)
+  - 0.5-0.8:    Typical for sustained sounds
+  - 1.0:        No decay at all (organ-like)
+
+Release (seconds): How quickly the sound fades after key release.
+  - 0.01-0.1:   Tight, staccato
+  - 0.2-0.5:    Natural release
+  - 1.0+:       Long tail (pads, reverb-like)
+
+Common Presets:
+---------------
+  Pluck/Keys:  EnvNode::adsr(0.005, 0.2,  0.3, 0.1)   // Quick attack, short sustain
+  Pad:         EnvNode::adsr(0.3,   0.5,  0.7, 0.8)   // Slow attack, long release
+  Brass:       EnvNode::adsr(0.08,  0.1,  0.8, 0.15)  // Slightly soft attack
+  Percussion:  EnvNode::adsr(0.001, 0.1,  0.0, 0.1)   // Instant attack, no sustain
+
+How Envelopes Connect:
+----------------------
+Envelopes output a control signal (0.0 to 1.0) that multiplies another signal.
+Use .amplify() to connect an envelope to an oscillator:
+
+  let voice = OscNode::sawtooth().amplify(EnvNode::adsr(0.01, 0.1, 0.7, 0.3));
+
+The envelope can also modulate filter cutoff for that classic "wah" effect:
+
+  let filter = FilterNode::lowpass(500.0);
+  let env = EnvNode::adsr(0.01, 0.2, 0.3, 0.1);
+  // Use .modulate() to sweep the filter with the envelope
+*/
+
 pub struct EnvNode {
     env: Envelope,
 }
