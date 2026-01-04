@@ -19,11 +19,17 @@ rtrb = ["dep:rtrb"]
 rtrb = { version = "0.3.2", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 
-[dev-dependencies]
+# TUI binary dependencies
 color-eyre = "0.6.3"
 crossterm = "0.29.0"
 ratatui = "0.29.0"
 cpal = "0.16"
 rustfft = "6"
 
+[dev-dependencies]
+
 [build-dependencies]
+
+[[bin]]
+name = "saavy"
+path = "src/bin/saavy.rs"
