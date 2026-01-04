@@ -3,6 +3,78 @@ use crate::{
     graph::node::{GraphNode, Modulatable},
 };
 
+/*
+State-Variable Filter (SVF)
+===========================
+
+A filter removes or attenuates certain frequencies from a signal. In subtractive
+synthesis, you start with a harmonically rich waveform (like a sawtooth) and
+filter out frequencies to sculpt the timbre. This is why it's called
+"subtractive" - you're subtracting harmonics.
+
+Filter Types:
+-------------
+
+Lowpass (LP): Passes frequencies BELOW the cutoff, attenuates above.
+  - The most common synth filter
+  - Higher cutoff = brighter sound
+  - Lower cutoff = darker, muffled sound
+  - Use: Basses, pads, "underwater" effects
+
+Highpass (HP): Passes frequencies ABOVE the cutoff, attenuates below.
+  - Removes low-end rumble and muddiness
+  - Creates thin, airy sounds
+  - Use: Hi-hats, leads, clearing mix space
+
+Bandpass (BP): Passes frequencies AROUND the cutoff, attenuates both sides.
+  - Creates a focused, "telephone" quality
+  - Sweeping bandpass = classic wah effect
+  - Use: Vocal-like sounds, wah effects, isolating frequencies
+
+Notch: Attenuates frequencies AT the cutoff, passes everything else.
+  - Creates a "hollow" sound at the notch frequency
+  - Opposite of bandpass
+  - Use: Phaser effects, removing resonant frequencies
+
+Parameters:
+-----------
+
+Cutoff (Hz): The frequency where the filter takes effect.
+  - 20 Hz:     Barely open (very dark)
+  - 200 Hz:    Muffled, like through a wall
+  - 1000 Hz:   Warm, round bass
+  - 5000 Hz:   Present, clear
+  - 20000 Hz:  Fully open (no filtering)
+
+Resonance (Q): Emphasis at the cutoff frequency.
+  - 0.0:  No emphasis (gentle rolloff)
+  - 0.5:  Slight peak (adds character)
+  - 1.0+: Strong peak (aggressive, "squelchy")
+  - High: Self-oscillation (filter becomes a sine oscillator!)
+
+Why "State-Variable"?
+---------------------
+The SVF is a specific filter topology that's popular in synthesizers because:
+1. It provides LP, HP, BP, and Notch outputs simultaneously
+2. It's stable and well-behaved at high resonance
+3. Cutoff and resonance are independently controllable
+4. It uses a "TPT" (topology-preserving transform) for digital accuracy
+
+Example usage:
+  // Basic lowpass
+  let dark = OscNode::sawtooth().through(FilterNode::lowpass(800.0));
+
+  // Modulated filter (auto-wah)
+  let lfo = LfoNode::sine(2.0);
+  let wah = FilterNode::lowpass(1000.0)
+      .modulate(lfo, FilterParam::Cutoff, 800.0);
+
+  // Envelope-controlled filter (classic synth sound)
+  let filter = OscNode::sawtooth()
+      .through(FilterNode::lowpass(500.0));
+  // (Apply envelope modulation to sweep the cutoff)
+*/
+
 #[derive(Clone, Copy, Debug)]
 pub enum FilterParam {
     Cutoff,
