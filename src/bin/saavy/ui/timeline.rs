@@ -8,17 +8,22 @@ use ratatui::{
     Frame,
 };
 
-use super::UiState;
+use super::{UiStateInit, UiStateUpdate};
 
 /// Render the timeline with pattern blocks and playhead
-pub fn render_timeline(frame: &mut Frame, area: Rect, state: &UiState) {
+pub fn render_timeline(
+    frame: &mut Frame,
+    area: Rect,
+    static_state: &UiStateInit,
+    dynamic_state: &UiStateUpdate,
+) {
     if area.height < 2 || area.width < 20 {
         return;
     }
 
-    let ticks_per_beat = state.ppq;
+    let ticks_per_beat = static_state.ppq;
     let ticks_per_bar = ticks_per_beat * 4; // 4/4 time
-    let total_bars = (state.total_ticks + ticks_per_bar - 1) / ticks_per_bar;
+    let total_bars = (static_state.total_ticks + ticks_per_bar - 1) / ticks_per_bar;
 
     // Calculate how many characters per bar based on available width
     let track_label_width = 8u16;
@@ -29,7 +34,7 @@ pub fn render_timeline(frame: &mut Frame, area: Rect, state: &UiState) {
     let chars_per_tick = chars_per_bar as f64 / ticks_per_bar as f64;
 
     // Calculate playhead position in characters
-    let playhead_char = (state.tick_position as f64 * chars_per_tick) as u16;
+    let playhead_char = (dynamic_state.tick_position as f64 * chars_per_tick) as u16;
 
     let mut lines = Vec::new();
 
@@ -48,8 +53,15 @@ pub fn render_timeline(frame: &mut Frame, area: Rect, state: &UiState) {
     )));
 
     // Track rows
-    for track in &state.track_info {
+    for (track_idx, track) in static_state.tracks.iter().enumerate() {
         let mut spans = Vec::new();
+
+        // Get dynamic state for this track
+        let is_active = if track_idx < dynamic_state.num_tracks as usize {
+            dynamic_state.track_states[track_idx].is_active
+        } else {
+            false
+        };
 
         // Track name (padded)
         let name = if track.name.len() > 6 {
@@ -59,7 +71,7 @@ pub fn render_timeline(frame: &mut Frame, area: Rect, state: &UiState) {
         };
         spans.push(Span::styled(
             name,
-            Style::default().fg(if track.is_active {
+            Style::default().fg(if is_active {
                 Color::White
             } else {
                 Color::DarkGray
@@ -68,7 +80,7 @@ pub fn render_timeline(frame: &mut Frame, area: Rect, state: &UiState) {
 
         // Build pattern visualization character by character
         // Use different characters to show note boundaries
-        let base_color = if track.is_active {
+        let base_color = if is_active {
             Color::Cyan
         } else {
             Color::DarkGray

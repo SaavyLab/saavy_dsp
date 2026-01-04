@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use super::sequencer::Sequencer;
 use super::track::Track;
-use super::ui::{ControlMessage, TrackInfo, UiApp, UiState};
+use super::ui::{ControlMessage, TrackDynamicState, TrackStaticInfo, UiApp, UiStateInit, UiStateUpdate};
 
 use saavy_dsp::{
     graph::GraphNode,
@@ -73,18 +73,15 @@ impl Saavy {
         let sample_rate = config.sample_rate().0 as f32;
         let channels = config.channels() as usize;
 
-        // Calculate total duration and build track info for UI
+        // Calculate total duration and build static track info for UI (sent once, can allocate)
         let mut total_ticks = 0u32;
-        let track_info: Vec<TrackInfo> = self
+        let tracks_static: Vec<TrackStaticInfo> = self
             .tracks
             .iter()
             .map(|track| {
                 total_ticks = total_ticks.max(track.sequence.total_ticks);
-                TrackInfo {
+                TrackStaticInfo {
                     name: track.name.clone(),
-                    is_active: false,
-                    envelope_level: 0.0,
-                    current_note: None,
                     events: track
                         .sequence
                         .events
@@ -95,13 +92,15 @@ impl Saavy {
             })
             .collect();
 
+        let num_tracks = self.tracks.len().min(8) as u8;
+
         // Create ring buffers for audio↔UI communication
         let (audio_tx, audio_rx) = RingBuffer::<f32>::new(AUDIO_RING_SIZE);
-        let (state_tx, state_rx) = RingBuffer::<UiState>::new(STATE_RING_SIZE);
+        let (state_tx, state_rx) = RingBuffer::<UiStateUpdate>::new(STATE_RING_SIZE);
         let (control_tx, control_rx) = RingBuffer::<ControlMessage>::new(CONTROL_RING_SIZE);
 
-        // Initial UI state
-        let initial_state = UiState::new(self.bpm, self.ppq, total_ticks, track_info);
+        // Static UI state (sent once at init, never changes)
+        let static_state = UiStateInit::new(self.bpm, self.ppq, total_ticks, tracks_static);
 
         // Create sequencer
         let sequencer = Sequencer::new(self.bpm, self.ppq, sample_rate as f64, self.tracks.len());
@@ -111,9 +110,7 @@ impl Saavy {
             tracks: self.tracks,
             sequencer,
             sample_rate,
-            bpm: self.bpm,
-            ppq: self.ppq,
-            total_ticks,
+            num_tracks,
             audio_tx,
             state_tx,
             control_rx,
@@ -137,14 +134,13 @@ impl Saavy {
                     tracks,
                     sequencer,
                     sample_rate,
-                    bpm,
-                    ppq,
-                    total_ticks,
+                    num_tracks,
                     audio_tx,
                     state_tx,
                     control_rx,
                 } = &mut *state;
                 let sample_rate = *sample_rate;
+                let num_tracks = *num_tracks;
 
                 // Process control messages from UI
                 while let Ok(msg) = control_rx.pop() {
@@ -193,32 +189,23 @@ impl Saavy {
                     frames_written += frames_to_render;
                 }
 
-                // Push UI state update (once per callback, non-blocking)
-                let track_info: Vec<TrackInfo> = tracks
-                    .iter()
-                    .map(|track| TrackInfo {
-                        name: track.name.clone(),
+                // Push UI state update (once per callback, allocation-free)
+                let mut track_states = [TrackDynamicState::default(); 8];
+                for (i, track) in tracks.iter().enumerate().take(8) {
+                    track_states[i] = TrackDynamicState {
                         is_active: track.is_active(),
                         envelope_level: track.envelope_level().unwrap_or(0.0),
-                        current_note: track.current_note(),
-                        events: track
-                            .sequence
-                            .events
-                            .iter()
-                            .filter_map(|e| e.note.map(|_| (e.tick_offset, e.duration_ticks)))
-                            .collect(),
-                    })
-                    .collect();
+                        current_note: track.current_note().unwrap_or(0),
+                    };
+                }
 
-                let ui_state = UiState {
+                let ui_update = UiStateUpdate {
                     tick_position: sequencer.tick_position(),
-                    total_ticks: *total_ticks,
-                    bpm: *bpm,
-                    ppq: *ppq,
                     is_playing: sequencer.is_playing(),
-                    track_info,
+                    track_states,
+                    num_tracks,
                 };
-                let _ = state_tx.push(ui_state);
+                let _ = state_tx.push(ui_update);
             },
             |err| eprintln!("Audio error: {}", err),
             None,
@@ -228,7 +215,7 @@ impl Saavy {
 
         // Initialize terminal and run TUI
         let mut terminal = ratatui::init();
-        let mut ui = UiApp::new(audio_rx, state_rx, control_tx, initial_state);
+        let mut ui = UiApp::new(audio_rx, state_rx, control_tx, static_state);
         let result = ui.run(&mut terminal);
         ratatui::restore();
 
@@ -247,11 +234,9 @@ struct AudioState {
     tracks: Vec<Track>,
     sequencer: Sequencer,
     sample_rate: f32,
-    bpm: f64,
-    ppq: u32,
-    total_ticks: u32,
+    num_tracks: u8,
     audio_tx: rtrb::Producer<f32>,
-    state_tx: rtrb::Producer<UiState>,
+    state_tx: rtrb::Producer<UiStateUpdate>,
     control_rx: rtrb::Consumer<ControlMessage>,
 }
 

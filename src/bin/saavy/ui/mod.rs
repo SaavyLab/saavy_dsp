@@ -17,7 +17,7 @@ use ratatui::{
 use rtrb::Consumer;
 use std::time::Duration;
 
-pub use state::{ControlMessage, TrackInfo, UiState};
+pub use state::{ControlMessage, TrackDynamicState, TrackStaticInfo, UiStateInit, UiStateUpdate};
 
 use timeline::render_timeline;
 use transport::render_transport;
@@ -30,12 +30,14 @@ const VIS_BUFFER_SIZE: usize = 1024;
 pub struct UiApp {
     /// Ring buffer receiver for audio samples
     audio_rx: Consumer<f32>,
-    /// Ring buffer receiver for UI state updates
-    state_rx: Consumer<UiState>,
+    /// Ring buffer receiver for UI state updates (allocation-free)
+    state_rx: Consumer<UiStateUpdate>,
     /// Ring buffer sender for control messages
     control_tx: rtrb::Producer<ControlMessage>,
-    /// Current UI state (latest received)
-    current_state: UiState,
+    /// Static state (set once at init, never changes)
+    static_state: UiStateInit,
+    /// Current dynamic state (updated from audio thread)
+    dynamic_state: UiStateUpdate,
     /// Audio sample buffer for visualization
     audio_buffer: Vec<f32>,
     /// Whether the app should quit
@@ -46,15 +48,16 @@ impl UiApp {
     /// Create a new UI application
     pub fn new(
         audio_rx: Consumer<f32>,
-        state_rx: Consumer<UiState>,
+        state_rx: Consumer<UiStateUpdate>,
         control_tx: rtrb::Producer<ControlMessage>,
-        initial_state: UiState,
+        static_state: UiStateInit,
     ) -> Self {
         Self {
             audio_rx,
             state_rx,
             control_tx,
-            current_state: initial_state,
+            static_state,
+            dynamic_state: UiStateUpdate::new(),
             audio_buffer: vec![0.0; VIS_BUFFER_SIZE],
             should_quit: false,
         }
@@ -105,9 +108,9 @@ impl UiApp {
 
     /// Poll for state updates from ring buffer
     fn poll_state(&mut self) {
-        // Keep only the latest state
-        while let Ok(state) = self.state_rx.pop() {
-            self.current_state = state;
+        // Keep only the latest state update
+        while let Ok(update) = self.state_rx.pop() {
+            self.dynamic_state = update;
         }
     }
 
@@ -143,7 +146,7 @@ impl UiApp {
             .split(area);
 
         // Transport bar
-        render_transport(frame, chunks[0], &self.current_state);
+        render_transport(frame, chunks[0], &self.static_state, &self.dynamic_state);
 
         // Timeline with pattern blocks
         let timeline_block = Block::default()
@@ -151,7 +154,7 @@ impl UiApp {
             .borders(Borders::ALL);
         let timeline_inner = timeline_block.inner(chunks[1]);
         frame.render_widget(timeline_block, chunks[1]);
-        render_timeline(frame, timeline_inner, &self.current_state);
+        render_timeline(frame, timeline_inner, &self.static_state, &self.dynamic_state);
 
         // Waveform oscilloscope
         render_waveform(frame, chunks[2], &self.audio_buffer);
