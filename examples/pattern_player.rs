@@ -134,7 +134,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Trigger any events at this tick
                     while event_idx < events.len() {
                         let event = &events[event_idx];
-                        let event_tick = (event.tick_offset as i32 + event.offset_ticks) as u32;
+                        let event_tick = event.tick_offset.saturating_add_signed(event.offset_ticks);
 
                         if event_tick <= current_tick {
                             if let Some(note) = event.note {
