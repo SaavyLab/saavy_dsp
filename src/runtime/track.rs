@@ -3,7 +3,7 @@
 //! Simple model: one track = one GraphNode = one voice.
 //! Polyphony is achieved by creating multiple tracks.
 
-use saavy_dsp::{
+use crate::{
     graph::{GraphNode, RenderCtx},
     sequencing::Sequence,
 };

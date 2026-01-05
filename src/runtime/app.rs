@@ -9,7 +9,7 @@ use super::sequencer::Sequencer;
 use super::track::Track;
 use super::ui::{ControlMessage, TrackDynamicState, TrackStaticInfo, UiApp, UiStateInit, UiStateUpdate};
 
-use saavy_dsp::{
+use crate::{
     graph::GraphNode,
     sequencing::{Pattern, PatternChain, Sequence},
     MAX_BLOCK_SIZE,
