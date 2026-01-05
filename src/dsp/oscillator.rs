@@ -214,6 +214,10 @@ impl OscillatorBlock {
         Self::new(Waveform::Triangle)
     }
 
+    pub fn noise() -> Self {
+        Self::new(Waveform::Noise)
+    }
+
     /// Compute the waveform value at the current phase position.
     /// Returns a value in [-1.0, +1.0].
     pub fn next_sample(&mut self) -> f32 {
