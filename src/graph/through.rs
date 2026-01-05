@@ -43,6 +43,8 @@ Signal flow:
   Mix:     [A] ────┬──→ (+) ──→ output
            [B] ────┘
 
+Quick rule: passing audio through a filter or effect? Use `.through()`.
+
 
 Order Matters!
 --------------
