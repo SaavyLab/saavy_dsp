@@ -49,6 +49,37 @@ Common Effects
   PWM:                      LFO → Pulse Width
 
 
+Modulate vs Amplify
+-------------------
+
+Both use an LFO, but they do different things:
+
+  .modulate()  →  Changes a PARAMETER (cutoff, delay time, etc.)
+  .amplify()   →  Changes AMPLITUDE (volume, tremolo)
+
+  // Tremolo: LFO controls volume (use amplify)
+  let tremolo = OscNode::sine().amplify(LfoNode::sine(5.0));
+
+  // Auto-wah: LFO controls filter cutoff (use modulate)
+  let wah = FilterNode::lowpass(1000.0)
+      .modulate(LfoNode::sine(2.0), FilterParam::Cutoff, 500.0);
+
+Quick rule: controlling volume? Use `.amplify()`. Controlling any other
+parameter? Use `.modulate()`.
+
+
+Depth Gotcha
+------------
+
+Choose depth carefully to stay within valid parameter ranges:
+
+  ✓ cutoff=2000, depth=1500  →  sweeps 500-3500 Hz (valid)
+  ✗ cutoff=500,  depth=1000  →  sweeps -500-1500 Hz (negative!)
+
+The target node clamps invalid values, but this creates "flat spots"
+where the LFO hits the limit and stops moving the parameter.
+
+
 How It Works
 ------------
 
