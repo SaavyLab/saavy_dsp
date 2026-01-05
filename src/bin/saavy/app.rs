@@ -100,7 +100,7 @@ impl Saavy {
         let (control_tx, control_rx) = RingBuffer::<ControlMessage>::new(CONTROL_RING_SIZE);
 
         // Static UI state (sent once at init, never changes)
-        let static_state = UiStateInit::new(self.bpm, self.ppq, total_ticks, tracks_static);
+        let static_state = UiStateInit::new(self.bpm, self.ppq, total_ticks, sample_rate, tracks_static);
 
         // Create sequencer
         let sequencer = Sequencer::new(self.bpm, self.ppq, sample_rate as f64, self.tracks.len());

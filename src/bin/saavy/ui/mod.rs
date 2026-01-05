@@ -3,6 +3,7 @@
 //! Provides real-time visualization of audio output and pattern playback.
 
 pub mod state;
+mod spectrum;
 mod timeline;
 mod transport;
 mod waveform;
@@ -19,8 +20,9 @@ use std::time::Duration;
 
 pub use state::{ControlMessage, TrackDynamicState, TrackStaticInfo, UiStateInit, UiStateUpdate};
 
+use spectrum::{render_spectrum, SpectrumAnalyzer};
 use timeline::render_timeline;
-use transport::render_transport;
+use transport::{render_transport, AudioStats};
 use waveform::render_waveform;
 
 /// Audio visualization buffer size
@@ -40,6 +42,8 @@ pub struct UiApp {
     dynamic_state: UiStateUpdate,
     /// Audio sample buffer for visualization
     audio_buffer: Vec<f32>,
+    /// Spectrum analyzer for frequency visualization
+    spectrum: SpectrumAnalyzer,
     /// Whether the app should quit
     should_quit: bool,
 }
@@ -52,6 +56,7 @@ impl UiApp {
         control_tx: rtrb::Producer<ControlMessage>,
         static_state: UiStateInit,
     ) -> Self {
+        let spectrum = SpectrumAnalyzer::new(VIS_BUFFER_SIZE, static_state.sample_rate);
         Self {
             audio_rx,
             state_rx,
@@ -59,6 +64,7 @@ impl UiApp {
             static_state,
             dynamic_state: UiStateUpdate::new(),
             audio_buffer: vec![0.0; VIS_BUFFER_SIZE],
+            spectrum,
             should_quit: false,
         }
     }
@@ -103,6 +109,9 @@ impl UiApp {
                 let excess = self.audio_buffer.len() - VIS_BUFFER_SIZE;
                 self.audio_buffer.drain(0..excess);
             }
+
+            // Update spectrum analyzer with current buffer
+            self.spectrum.update(&self.audio_buffer);
         }
     }
 
@@ -134,19 +143,22 @@ impl UiApp {
     fn render(&self, frame: &mut Frame) {
         let area = frame.area();
 
-        // Main layout: transport, timeline, waveform, help
+        // Main layout: transport, timeline, visualizers, help
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3),  // Transport bar
                 Constraint::Min(6),     // Timeline
-                Constraint::Length(8),  // Waveform
+                Constraint::Length(10), // Visualizers (waveform + spectrum)
                 Constraint::Length(1),  // Help bar
             ])
             .split(area);
 
+        // Compute audio stats for transport display
+        let audio_stats = AudioStats::from_buffer(&self.audio_buffer);
+
         // Transport bar
-        render_transport(frame, chunks[0], &self.static_state, &self.dynamic_state);
+        render_transport(frame, chunks[0], &self.static_state, &self.dynamic_state, &audio_stats);
 
         // Timeline with pattern blocks
         let timeline_block = Block::default()
@@ -156,8 +168,17 @@ impl UiApp {
         frame.render_widget(timeline_block, chunks[1]);
         render_timeline(frame, timeline_inner, &self.static_state, &self.dynamic_state);
 
-        // Waveform oscilloscope
-        render_waveform(frame, chunks[2], &self.audio_buffer);
+        // Visualizers: waveform and spectrum side-by-side
+        let viz_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50), // Waveform
+                Constraint::Percentage(50), // Spectrum
+            ])
+            .split(chunks[2]);
+
+        render_waveform(frame, viz_chunks[0], &self.audio_buffer);
+        render_spectrum(frame, viz_chunks[1], self.spectrum.data());
 
         // Help bar
         let help = ratatui::widgets::Paragraph::new(
