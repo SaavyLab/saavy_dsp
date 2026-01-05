@@ -11,22 +11,51 @@ An LFO is an oscillator that runs at sub-audio frequencies to modulate
 parameters over time. Unlike audio oscillators (20 Hz - 20 kHz), LFOs
 typically operate between 0.01 Hz - 20 Hz.
 
-Common uses:
-- Vibrato:    Modulate pitch (±5-10 cents)
-- Tremolo:    Modulate amplitude (volume wobble)
-- Auto-wah:   Modulate filter cutoff (sweeping filter)
-- Auto-pan:   Modulate stereo position (left-right movement)
+When to Use LfoNode
+-------------------
 
-Technical differences from audio oscillators:
-1. Fixed frequency (ignores MIDI note input)
-2. Outputs control signal (-1.0 to 1.0)
-3. Used with .modulate() combinator to affect parameters
+Use LFOs to make parameters move over time:
 
-Example:
-  let lfo = LfoNode::sine(5.0);  // 5 Hz sine wave
-  let filter = FilterNode::lowpass(1000.0)
+  // Auto-wah: LFO sweeps filter cutoff
+  let lfo = LfoNode::sine(5.0);
+  let wah = FilterNode::lowpass(1000.0)
       .modulate(lfo, FilterParam::Cutoff, 500.0);
-  // Result: Filter cutoff sweeps 500 Hz - 1500 Hz at 5 Hz
+  // Cutoff sweeps 500 Hz - 1500 Hz at 5 Hz
+
+  // Vibrato: fast subtle pitch modulation
+  let vibrato_lfo = LfoNode::sine(6.0);  // 6 Hz is classic vibrato speed
+
+  // Slow evolving texture
+  let slow_lfo = LfoNode::triangle(0.1);  // 10 second cycle
+
+
+Common LFO Uses
+---------------
+
+  Vibrato:    LFO → Pitch (±5-10 cents at 5-7 Hz)
+  Tremolo:    LFO → Amplitude (use .amplify() combinator)
+  Auto-wah:   LFO → Filter Cutoff
+  Auto-pan:   LFO → Stereo Position
+  Chorus:     LFO → Delay Time (very small depth)
+
+
+Available Waveforms
+-------------------
+
+  .sine()      Smooth, natural sweep (most common)
+  .triangle()  Linear motion, similar feel to sine
+  .sawtooth()  Gradual rise, instant reset (rhythmic)
+  .square()    Instant jumps between min/max (gating)
+
+
+How It Works
+------------
+
+See `dsp/lfo.rs` for details on:
+- Control-rate vs audio-rate oscillators
+- Typical LFO frequency ranges and their effects
+- Bipolar vs unipolar output
+- LFO sync and phase concepts
 */
 
 pub struct LfoNode {

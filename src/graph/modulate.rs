@@ -1,48 +1,61 @@
 use crate::{
+    dsp::modulate::block_average,
     graph::node::{GraphNode, Modulatable, RenderCtx},
     MAX_BLOCK_SIZE,
 };
 
 /*
-Parameter Modulation
-====================
+Modulate Node
+=============
 
-The Modulate node connects an LFO (or any signal) to a parameter on another
-node, creating time-varying effects like vibrato, tremolo, and auto-wah.
+Connects an LFO (or any signal) to a parameter on another node.
+This creates time-varying effects like vibrato, filter sweeps, and auto-wah.
 
-How it works:
-1. Render the LFO to a buffer (control signal from -1.0 to 1.0)
-2. Average the LFO samples (block-rate modulation for efficiency)
-3. Scale by depth: modulation = lfo_avg * depth
-4. Apply to parameter: final_value = base_value + modulation
-5. Render the source node with the modulated parameter
+When to Use Modulate
+--------------------
 
-Block-rate vs. Sample-rate modulation:
---------------------------------------
-Block-rate: Update parameter once per block (current implementation)
-  - Pro: Efficient (only one parameter update per ~64-2048 samples)
-  - Pro: Works with all existing nodes (filters compute coefficients per-block)
-  - Con: Stepping artifacts possible at very low block sizes
+Use `.modulate()` when you want a parameter to change over time:
 
-Sample-rate: Update parameter every sample
-  - Pro: Smoother modulation, no stepping
-  - Con: Higher CPU cost (parameter recalculation per sample)
-  - Con: Requires nodes to support per-sample parameter updates
+  // Auto-wah: LFO sweeps filter cutoff
+  let wah = FilterNode::lowpass(1000.0)
+      .modulate(LfoNode::sine(2.0), FilterParam::Cutoff, 800.0);
 
-For most musical applications, block-rate is perfectly adequate and
-significantly more efficient.
+  // Vibrato-like effect on delay time (chorus)
+  let chorus = DelayNode::new(15.0, 0.0, 0.5)
+      .modulate(LfoNode::sine(1.0), DelayParam::DelayTime, 10.0);
 
-Example usage:
-  let lfo = LfoNode::sine(5.0);                    // 5 Hz sine wave
-  let base_cutoff = 1000.0;                         // Center frequency
-  let mod_depth = 500.0;                            // ±500 Hz swing
 
-  let filter = FilterNode::lowpass(base_cutoff)
-      .modulate(lfo, FilterParam::Cutoff, mod_depth);
+Understanding Depth
+-------------------
 
-  // Result: Cutoff sweeps from 500 Hz to 1500 Hz at 5 Hz
-  //         (1000 - 500 when LFO = -1.0)
-  //         (1000 + 500 when LFO = +1.0)
+Depth controls how much the parameter changes:
+
+    modulated_value = base_value + (LFO × depth)
+
+Example with cutoff=1000, depth=500, LFO swinging -1 to +1:
+    LFO = -1.0  →  cutoff = 1000 + (-1 × 500) = 500 Hz
+    LFO =  0.0  →  cutoff = 1000 + ( 0 × 500) = 1000 Hz
+    LFO = +1.0  →  cutoff = 1000 + (+1 × 500) = 1500 Hz
+
+The parameter sweeps between 500 and 1500 Hz.
+
+
+Common Effects
+--------------
+
+  Filter sweep / Auto-wah:  LFO → Filter Cutoff
+  Chorus / Flanger:         LFO → Delay Time
+  Vibrato:                  LFO → Pitch (via delay time tricks)
+  PWM:                      LFO → Pulse Width
+
+
+How It Works
+------------
+
+See `dsp/modulate.rs` for implementation details, including:
+- Block-rate vs sample-rate modulation tradeoffs
+- The averaging algorithm for smooth modulation
+- Parameter clamping considerations
 */
 
 pub struct Modulate<S, L>
@@ -81,25 +94,19 @@ where
     fn render_block(&mut self, out: &mut [f32], ctx: &RenderCtx) {
         let len = out.len();
 
-        // Step 1: Render LFO to temp buffer
-        // LFO produces values in range [-1.0, 1.0]
+        // Render LFO to temp buffer (values in [-1.0, +1.0])
         self.lfo.render_block(&mut self.lfo_buffer[..len], ctx);
 
-        // Step 2: Average LFO samples for block-rate modulation
-        // This gives us a single modulation value for the entire block
-        let lfo_avg = self.lfo_buffer[..len].iter().sum::<f32>() / len as f32;
+        // Average LFO samples for block-rate modulation
+        let lfo_avg = block_average(&self.lfo_buffer[..len]);
 
-        // Step 3: Calculate modulation amount
-        // If LFO = 0.5 and depth = 500.0, modulation = 250.0
+        // Calculate and apply modulation
         let base_value = self.source.get_param(self.param);
         let modulation = lfo_avg * self.depth;
-
-        // Step 4: Apply modulation to the source node's parameter
-        // This updates the parameter's internal state (e.g., filter coefficients)
         self.source
             .apply_modulation(self.param, base_value, modulation);
 
-        // Step 5: Render the source with the modulated parameter
+        // Render the source with modulated parameter
         self.source.render_block(out, ctx);
     }
 
