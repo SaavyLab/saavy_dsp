@@ -95,6 +95,7 @@ impl Sequencer {
     /// Process one block of samples, triggering note events on tracks
     ///
     /// This should be called from the audio callback before rendering tracks.
+    /// REAL-TIME SAFE: No allocations in this function.
     pub fn process_block(&mut self, block_size: usize, tracks: &mut [Track], sample_rate: f32) {
         if !self.playing {
             return;
@@ -112,43 +113,47 @@ impl Sequencer {
 
                 let state = &mut self.track_states[track_idx];
 
-                // Collect note-on events (to avoid borrow conflict)
-                let mut note_ons: Vec<(u8, u8, u32)> = Vec::new();
-                while state.event_index < track.sequence.events.len() {
+                // Process note-on events - extract data first, then trigger
+                // (avoids borrow conflict between sequence and note_on)
+                loop {
+                    if state.event_index >= track.sequence.events.len() {
+                        break;
+                    }
+
                     let event = &track.sequence.events[state.event_index];
                     let event_tick = event.tick_offset.saturating_add_signed(event.offset_ticks);
 
-                    if event_tick <= current_tick {
-                        if let Some(note) = event.note {
-                            let end_tick = current_tick + event.duration_ticks;
-                            note_ons.push((note, event.velocity, end_tick));
-                        }
-                        state.event_index += 1;
-                    } else {
+                    if event_tick > current_tick {
                         break;
                     }
-                }
 
-                // Now trigger note-ons
-                for (note, velocity, end_tick) in note_ons {
-                    track.note_on(note, velocity, sample_rate);
-                    state.active_notes.push((note, end_tick));
-                }
+                    // Extract event data before any mutable operations
+                    let note = event.note;
+                    let velocity = event.velocity;
+                    let duration = event.duration_ticks;
+                    state.event_index += 1;
 
-                // Collect note-offs
-                let mut note_offs: Vec<u8> = Vec::new();
-                state.active_notes.retain(|&(note, end_tick)| {
-                    if current_tick >= end_tick {
-                        note_offs.push(note);
-                        false
-                    } else {
-                        true
+                    // Now trigger note-on if this event has a note
+                    if let Some(n) = note {
+                        let end_tick = current_tick + duration;
+                        track.note_on(n, velocity, sample_rate);
+                        // Push to pre-allocated vec (capacity reserved in TrackPlayback::new)
+                        state.active_notes.push((n, end_tick));
                     }
-                });
+                }
 
-                // Trigger note-offs
-                for note in note_offs {
-                    track.note_off(note, sample_rate);
+                // Process note-offs - iterate backwards to allow removal without reallocation
+                let mut i = 0;
+                while i < state.active_notes.len() {
+                    let (note, end_tick) = state.active_notes[i];
+                    if current_tick >= end_tick {
+                        track.note_off(note, sample_rate);
+                        // swap_remove is O(1) and doesn't allocate
+                        state.active_notes.swap_remove(i);
+                        // Don't increment i - the swapped element needs checking
+                    } else {
+                        i += 1;
+                    }
                 }
             }
 
@@ -159,7 +164,7 @@ impl Sequencer {
             if self.tick_position >= self.total_ticks as f64 {
                 if self.looping {
                     self.tick_position = 0.0;
-                    // Reset all track states
+                    // Reset all track states (clear doesn't deallocate)
                     for state in &mut self.track_states {
                         state.reset();
                     }
