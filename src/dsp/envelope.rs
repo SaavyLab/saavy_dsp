@@ -164,8 +164,12 @@ impl Envelope {
         }
     }
 
-    /// Gate high: start the attack phase.
+    /// Gate high: start the attack phase from zero.
+    ///
+    /// This resets the envelope for a clean retrigger - essential for
+    /// repeated notes to sound distinct rather than "tied together".
     pub fn note_on(&mut self, _ctx: &RenderCtx) {
+        self.level = 0.0; // Reset to zero for clean attack
         self.stage = EnvelopeState::Attack;
         self.release_elapsed_samples = 0;
     }
