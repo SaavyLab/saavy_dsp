@@ -1,179 +1,283 @@
 use crate::{graph::node::RenderCtx, MIN_TIME};
 
 /*
-Level
-  1.0 ┐     ╱╲________
-      │    ╱  ╲       ╲
-  0.7 │   ╱    ╲_______╲___
-      │  ╱              ╲  ╲
-  0.0 └─╱────────────────╲──╲─→ Time
-      Attack Decay Sustain Release
-       (A)   (D)    (S)     (R)
+ADSR Envelope Implementation
+============================
 
-Attack:  Ramp from 0 → 1             (time in seconds)
-Decay:   Ramp from 1 → sustain level (time in seconds)
-Sustain: Hold at level               (0.0 → 1.0)
-Release: Ramp from current → 0       (time in seconds)
+This module implements a linear ADSR envelope generator - the workhorse of
+synthesizer amplitude control.
 
-If attack = 0.1s and sample_rate = 48000:
-increment = 1.0 / (0.1 * 48000) = 1.0 / 4800 ≈ 0.000208 per sample
-After 4800 samples (0.1s), level reaches 1.0
+Vocabulary
+----------
+
+  level       The envelope's current output value (0.0 to 1.0). This multiplies
+              the audio signal to control its amplitude over time.
+
+  stage       Which phase of the envelope we're in: Idle, Attack, Decay,
+              Sustain, or Release. A state machine governs transitions.
+
+  gate        The note on/off signal. Gate high (note_on) triggers Attack.
+              Gate low (note_off) triggers Release from wherever we are.
+
+  increment   How much `level` changes per sample. Calculated from the stage
+              duration and sample rate.
+
+  sample_rate Samples per second (e.g., 48000). Converts time in seconds to
+              time in samples.
+
+
+The Shape: Linear Ramps
+-----------------------
+
+  Level
+    1.0 ┐     ╱╲
+        │    ╱  ╲___________
+    S   │   ╱               ╲
+        │  ╱                 ╲
+    0.0 └─╱───────────────────╲──→ Time
+        Attack Decay  Sustain  Release
+         (A)   (D)      (S)      (R)
+
+We use LINEAR ramps (straight lines) rather than exponential curves.
+
+Linear pros:  Simple, predictable, CPU-cheap
+Linear cons:  Doesn't match how acoustic sounds decay (exponential)
+
+Many classic analog synths used linear envelopes. Exponential envelopes
+sound more "natural" but linear is fine for learning and sounds punchy.
+
+
+The Math: Time to Increment
+---------------------------
+
+The key calculation converts a time duration into a per-sample increment:
+
+    increment = target_change / (time_seconds * sample_rate)
+
+Example: Attack of 0.1 seconds at 48kHz
+  - We need level to go from 0.0 → 1.0 (change of 1.0)
+  - Total samples = 0.1 * 48000 = 4800 samples
+  - increment = 1.0 / 4800 ≈ 0.000208
+
+Each sample, we do: level += increment
+After 4800 samples: level = 4800 * 0.000208 ≈ 1.0 ✓
+
+
+The State Machine
+-----------------
+
+    ┌──────────────────────────────────────────────────────┐
+    │                                                      │
+    │   ┌──────┐  note_on   ┌────────┐  level=1   ┌─────┐ │
+    │   │ Idle │ ─────────→ │ Attack │ ─────────→ │Decay│ │
+    │   └──────┘            └────────┘            └─────┘ │
+    │       ↑                    │                   │    │
+    │       │                    │ note_off          │    │
+    │       │                    ↓                   ↓    │
+    │       │               ┌─────────┐  level=S  ┌─────┐ │
+    │       │               │ Release │ ←──────── │ Sus │ │
+    │       │               └─────────┘  note_off └─────┘ │
+    │       │                    │                        │
+    │       │    level=0         │                        │
+    │       └────────────────────┘                        │
+    │                                                      │
+    └──────────────────────────────────────────────────────┘
+
+Key behavior: note_off triggers Release from ANY stage (Attack, Decay, or
+Sustain). Release always starts from the CURRENT level, not the sustain level.
+This prevents clicks when releasing during attack.
+
+
+Implementation Notes
+--------------------
+
+We calculate increment fresh each sample rather than caching it. This:
+  - Handles sample_rate changes gracefully
+  - Keeps code simple (no cache invalidation)
+  - Has negligible performance cost (one division per sample)
+
+Release is special: we snapshot the starting level and total samples at
+note_off time, then interpolate linearly. This ensures we hit exactly 0.0.
 */
 
+/// The current stage of the envelope state machine.
+/// Renamed from "State" to "Stage" to avoid confusion with Rust's state terminology.
 #[derive(Debug, Clone, Copy)]
 pub enum EnvelopeState {
-    Idle,
-    Attack,
-    Decay,
-    Sustain,
-    Release,
+    Idle,    // Gate low, envelope inactive, level = 0
+    Attack,  // Gate just went high, ramping up to 1.0
+    Decay,   // Reached peak, ramping down to sustain level
+    Sustain, // Holding at sustain level while gate is high
+    Release, // Gate went low, ramping down to 0
 }
 
 pub struct Envelope {
-    attack: f32,
-    decay: f32,
-    sustain: f32,
-    release: f32,
+    // ADSR parameters (set once, define the envelope shape)
+    attack_time: f32,  // seconds to ramp 0 → 1
+    decay_time: f32,   // seconds to ramp 1 → sustain
+    sustain_level: f32, // level to hold (0.0 - 1.0)
+    release_time: f32, // seconds to ramp current → 0
 
-    state: EnvelopeState,
-    current_level: f32,
-    decay_start: f32,
-    release_samples: u32,
-    release_progress: u32,
-    release_start: f32,
-    release_step: f32,
+    // Runtime state (changes every sample)
+    stage: EnvelopeState, // current stage of the state machine
+    level: f32,           // current output value (0.0 - 1.0)
+
+    // Decay bookkeeping
+    decay_start_level: f32, // level when decay began (usually 1.0)
+
+    // Release bookkeeping (we pre-calculate at note_off for precision)
+    release_start_level: f32, // level when release began
+    release_total_samples: u32, // total samples for release phase
+    release_elapsed_samples: u32, // samples elapsed since release began
 }
 
 impl Envelope {
     pub fn new() -> Self {
         Self {
-            attack: 0.01, // 10ms
-            decay: 0.1,   // 100ms
-            sustain: 0.7, // 70% level
-            release: 0.3, // 300ms
+            attack_time: 0.01,   // 10ms default
+            decay_time: 0.1,     // 100ms default
+            sustain_level: 0.7,  // 70% level default
+            release_time: 0.3,   // 300ms default
 
-            state: EnvelopeState::Idle,
-            current_level: 0.0,
-            decay_start: 0.0,
-            release_samples: 1,
-            release_progress: 0,
-            release_step: 0.0,
-            release_start: 0.0,
+            stage: EnvelopeState::Idle,
+            level: 0.0,
+            decay_start_level: 0.0,
+            release_start_level: 0.0,
+            release_total_samples: 1,
+            release_elapsed_samples: 0,
         }
     }
 
     pub fn adsr(attack: f32, decay: f32, sustain: f32, release: f32) -> Self {
         Self {
-            attack: attack.max(MIN_TIME),
-            decay: decay.max(MIN_TIME),
-            sustain: sustain.clamp(0.0, 1.0),
-            release: release.max(MIN_TIME),
+            attack_time: attack.max(MIN_TIME),
+            decay_time: decay.max(MIN_TIME),
+            sustain_level: sustain.clamp(0.0, 1.0),
+            release_time: release.max(MIN_TIME),
 
-            state: EnvelopeState::Idle,
-            decay_start: 0.0,
-            current_level: 0.0,
-            release_samples: 1,
-            release_progress: 0,
-            release_step: 0.0,
-            release_start: 0.0,
+            stage: EnvelopeState::Idle,
+            level: 0.0,
+            decay_start_level: 0.0,
+            release_start_level: 0.0,
+            release_total_samples: 1,
+            release_elapsed_samples: 0,
         }
     }
 
+    /// Gate high: start the attack phase.
     pub fn note_on(&mut self, _ctx: &RenderCtx) {
-        self.state = EnvelopeState::Attack;
-        self.release_progress = 0;
+        self.stage = EnvelopeState::Attack;
+        self.release_elapsed_samples = 0;
     }
 
+    /// Gate low: start the release phase from current level.
     pub fn note_off(&mut self, ctx: &RenderCtx) {
-        if matches!(self.state, EnvelopeState::Idle) {
+        if matches!(self.stage, EnvelopeState::Idle) {
             return;
         }
 
-        self.release_start = self.current_level;
-        if self.release <= MIN_TIME {
-            self.release_samples = 1;
-            self.release_step = self.release_start;
+        // Snapshot current level - we'll interpolate from here to 0
+        self.release_start_level = self.level;
+
+        // Pre-calculate total samples for release (avoids division each sample)
+        if self.release_time <= MIN_TIME {
+            self.release_total_samples = 1;
         } else {
-            self.release_samples = (self.release * ctx.sample_rate).round().max(1.0) as u32;
-            self.release_step = self.release_start / self.release_samples as f32;
+            self.release_total_samples =
+                (self.release_time * ctx.sample_rate).round().max(1.0) as u32;
         }
 
-        self.release_progress = 0;
-        self.state = EnvelopeState::Release;
+        self.release_elapsed_samples = 0;
+        self.stage = EnvelopeState::Release;
     }
 
+    /// Advance the envelope by one sample. Called once per sample.
     pub fn next_sample(&mut self, ctx: &RenderCtx) {
-        match self.state {
-            EnvelopeState::Idle => self.current_level = 0.0,
+        match self.stage {
+            EnvelopeState::Idle => {
+                self.level = 0.0;
+            }
+
             EnvelopeState::Attack => {
-                // Ramp up from 0.0 to 1.0 over attack time
-                let increment = 1.0 / (self.attack * ctx.sample_rate);
-                self.current_level += increment;
+                // increment = 1.0 / (attack_time * sample_rate)
+                // This gives us the per-sample step to reach 1.0 in attack_time seconds
+                let increment = 1.0 / (self.attack_time * ctx.sample_rate);
+                self.level += increment;
 
-                if self.current_level >= 1.0 {
-                    self.current_level = 1.0;
-                    self.decay_start = self.current_level.max(self.sustain);
-                    self.state = EnvelopeState::Decay;
+                if self.level >= 1.0 {
+                    self.level = 1.0;
+                    self.decay_start_level = 1.0;
+                    self.stage = EnvelopeState::Decay;
                 }
             }
+
             EnvelopeState::Decay => {
-                // Ramp down from 1.0 to 0.0 over decay time
-                let target = self.sustain;
-                let decrement = (self.decay_start - target) / (self.decay * ctx.sample_rate);
-                self.current_level -= decrement;
+                // Ramp from decay_start_level down to sustain_level
+                let target = self.sustain_level;
+                let total_drop = self.decay_start_level - target;
+                let decrement = total_drop / (self.decay_time * ctx.sample_rate);
+                self.level -= decrement;
 
-                if self.current_level <= target {
-                    self.current_level = target;
-                    self.state = EnvelopeState::Sustain;
+                if self.level <= target {
+                    self.level = target;
+                    self.stage = EnvelopeState::Sustain;
                 }
             }
-            EnvelopeState::Sustain => {
-                // Hold at sustain level until note_off
-                self.current_level = self.sustain;
-            }
-            EnvelopeState::Release => {
-                self.current_level = (self.release_start
-                    - self.release_step * self.release_progress as f32)
-                    .max(0.0);
-                self.release_progress = self.release_progress.saturating_add(1);
 
-                if self.release_progress >= self.release_samples {
-                    self.current_level = 0.0;
-                    self.state = EnvelopeState::Idle;
+            EnvelopeState::Sustain => {
+                // Hold at sustain level until gate goes low
+                self.level = self.sustain_level;
+            }
+
+            EnvelopeState::Release => {
+                // Linear interpolation from release_start_level to 0
+                // level = start * (1 - elapsed/total)
+                let progress = self.release_elapsed_samples as f32
+                    / self.release_total_samples as f32;
+                self.level = (self.release_start_level * (1.0 - progress)).max(0.0);
+
+                self.release_elapsed_samples = self.release_elapsed_samples.saturating_add(1);
+
+                if self.release_elapsed_samples >= self.release_total_samples {
+                    self.level = 0.0;
+                    self.stage = EnvelopeState::Idle;
                 }
             }
         }
 
-        debug_assert!((0.0..=1.0).contains(&self.current_level));
+        debug_assert!((0.0..=1.0).contains(&self.level));
     }
 
+    /// Render a block of envelope values into the buffer.
     pub fn render(&mut self, buffer: &mut [f32], ctx: &RenderCtx) {
         for sample in buffer.iter_mut() {
             self.next_sample(ctx);
-            *sample = self.current_level;
+            *sample = self.level;
         }
     }
 
+    /// Returns true if the envelope is producing output (not idle).
     pub fn is_active(&self) -> bool {
-        !matches!(self.state, EnvelopeState::Idle)
+        !matches!(self.stage, EnvelopeState::Idle)
     }
 
+    /// Reset to idle state.
     pub fn reset(&mut self) {
-        self.state = EnvelopeState::Idle;
-        self.current_level = 0.0;
-        self.decay_start = 0.0;
-        self.release_progress = 0;
-        self.release_start = 0.0;
+        self.stage = EnvelopeState::Idle;
+        self.level = 0.0;
+        self.decay_start_level = 0.0;
+        self.release_elapsed_samples = 0;
+        self.release_start_level = 0.0;
     }
 
     /// Get the current envelope level (0.0 to 1.0)
     pub fn level(&self) -> f32 {
-        self.current_level
+        self.level
     }
 
-    /// Get the current envelope state
+    /// Get the current envelope stage
     pub fn state(&self) -> EnvelopeState {
-        self.state
+        self.stage
     }
 }
 

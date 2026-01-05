@@ -15,3 +15,4 @@ pub mod filter;
 pub mod oscillator;
 
 pub use envelope::EnvelopeState;
+pub use oscillator::Waveform;
