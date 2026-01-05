@@ -1,5 +1,5 @@
 use crate::graph::{
-    amplify::Amplify,
+    amplify::{Amplify, Gain},
     mix::Mix,
     modulate::Modulate,
     node::{GraphNode, Modulatable},
@@ -7,8 +7,16 @@ use crate::graph::{
 };
 
 pub trait NodeExt: GraphNode + Sized {
+    /// Multiply by another signal (envelope, LFO, ring mod)
     fn amplify<M>(self, modulator: M) -> Amplify<Self, M> {
         Amplify::new(self, modulator)
+    }
+
+    /// Apply constant gain (volume control)
+    ///
+    /// Common values: 0.5 = -6dB, 1.0 = unity, 2.0 = +6dB
+    fn gain(self, gain: f32) -> Gain<Self> {
+        Gain::new(self, gain)
     }
 
     fn through<F: GraphNode>(self, filter: F) -> Through<Self, F> {

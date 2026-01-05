@@ -128,6 +128,23 @@ impl FilterNode {
         }
     }
 
+    /// Set the resonance (Q factor) for this filter
+    ///
+    /// Resonance adds emphasis at the cutoff frequency:
+    /// - 0.0: No emphasis (gentle rolloff)
+    /// - 0.5: Slight peak (adds character)
+    /// - 1.0+: Strong peak (aggressive, "squelchy")
+    ///
+    /// # Example
+    /// ```ignore
+    /// let filter = FilterNode::lowpass(800.0).with_resonance(0.7);
+    /// ```
+    pub fn with_resonance(mut self, resonance: f32) -> Self {
+        self.base_resonance = resonance;
+        self.filter.set_resonance(resonance);
+        self
+    }
+
     // Test-only getters to verify modulation behavior
     #[cfg(test)]
     pub fn get_base_cutoff(&self) -> f32 {
