@@ -21,6 +21,8 @@ pub struct UiStateInit {
     pub ppq: u32,
     /// Total duration in ticks
     pub total_ticks: u32,
+    /// Audio sample rate in Hz
+    pub sample_rate: f32,
     /// Per-track static info (names, patterns)
     pub tracks: Vec<TrackStaticInfo>,
 }
@@ -60,11 +62,12 @@ pub struct TrackDynamicState {
 
 impl UiStateInit {
     /// Create initial UI state
-    pub fn new(bpm: f64, ppq: u32, total_ticks: u32, tracks: Vec<TrackStaticInfo>) -> Self {
+    pub fn new(bpm: f64, ppq: u32, total_ticks: u32, sample_rate: f32, tracks: Vec<TrackStaticInfo>) -> Self {
         Self {
             bpm,
             ppq,
             total_ticks,
+            sample_rate,
             tracks,
         }
     }

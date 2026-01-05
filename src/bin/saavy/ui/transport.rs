@@ -1,4 +1,4 @@
-//! Transport bar widget - shows BPM, play state, and position
+//! Transport bar widget - shows BPM, play state, position, and audio stats
 
 use ratatui::{
     layout::Rect,
@@ -10,12 +10,31 @@ use ratatui::{
 
 use super::{UiStateInit, UiStateUpdate};
 
+/// Audio statistics for display
+pub struct AudioStats {
+    pub peak: f32,
+    pub rms: f32,
+}
+
+impl AudioStats {
+    /// Compute audio stats from a buffer
+    pub fn from_buffer(buffer: &[f32]) -> Self {
+        if buffer.is_empty() {
+            return Self { peak: 0.0, rms: 0.0 };
+        }
+        let peak = buffer.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
+        let rms = (buffer.iter().map(|&x| x * x).sum::<f32>() / buffer.len() as f32).sqrt();
+        Self { peak, rms }
+    }
+}
+
 /// Render the transport bar
 pub fn render_transport(
     frame: &mut Frame,
     area: Rect,
     static_state: &UiStateInit,
     dynamic_state: &UiStateUpdate,
+    audio_stats: &AudioStats,
 ) {
     let block = Block::default()
         .title(" saavy ")
@@ -32,6 +51,9 @@ pub fn render_transport(
     let play_symbol = if dynamic_state.is_playing { "▶" } else { "⏸" };
     let play_state_str = if dynamic_state.is_playing { "Playing" } else { "Paused" };
 
+    // Format sample rate nicely (e.g., 48000 -> "48kHz")
+    let sample_rate_khz = static_state.sample_rate / 1000.0;
+
     let line = Line::from(vec![
         Span::styled(
             format!(" BPM: {:.0}  ", static_state.bpm),
@@ -45,14 +67,22 @@ pub fn render_transport(
                 Color::Yellow
             }),
         ),
-        Span::raw("    "),
         Span::styled(
             format!("Bar {} | Beat {}  ", current_bar, current_beat),
             Style::default().fg(Color::White),
         ),
         Span::styled(
-            format!("{}/{}", dynamic_state.tick_position, static_state.total_ticks),
+            format!("{}/{}  ", dynamic_state.tick_position, static_state.total_ticks),
             Style::default().fg(Color::DarkGray),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            format!("{:.1}kHz  ", sample_rate_khz),
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled(
+            format!("Peak: {:.2}  RMS: {:.2}", audio_stats.peak, audio_stats.rms),
+            Style::default().fg(Color::Magenta),
         ),
     ]);
 
