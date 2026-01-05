@@ -113,6 +113,22 @@ impl Sequencer {
 
                 let state = &mut self.track_states[track_idx];
 
+                // Process note-offs FIRST - this is critical!
+                // If we did note-ons first, a new note starting at the same tick
+                // as an old note ending would have its attack clobbered by the release.
+                let mut i = 0;
+                while i < state.active_notes.len() {
+                    let (note, end_tick) = state.active_notes[i];
+                    if current_tick >= end_tick {
+                        track.note_off(note, sample_rate);
+                        // swap_remove is O(1) and doesn't allocate
+                        state.active_notes.swap_remove(i);
+                        // Don't increment i - the swapped element needs checking
+                    } else {
+                        i += 1;
+                    }
+                }
+
                 // Process note-on events - extract data first, then trigger
                 // (avoids borrow conflict between sequence and note_on)
                 loop {
@@ -139,20 +155,6 @@ impl Sequencer {
                         track.note_on(n, velocity, sample_rate);
                         // Push to pre-allocated vec (capacity reserved in TrackPlayback::new)
                         state.active_notes.push((n, end_tick));
-                    }
-                }
-
-                // Process note-offs - iterate backwards to allow removal without reallocation
-                let mut i = 0;
-                while i < state.active_notes.len() {
-                    let (note, end_tick) = state.active_notes[i];
-                    if current_tick >= end_tick {
-                        track.note_off(note, sample_rate);
-                        // swap_remove is O(1) and doesn't allocate
-                        state.active_notes.swap_remove(i);
-                        // Don't increment i - the swapped element needs checking
-                    } else {
-                        i += 1;
                     }
                 }
             }
