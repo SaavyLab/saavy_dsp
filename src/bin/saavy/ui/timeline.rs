@@ -125,6 +125,11 @@ pub fn render_timeline(
         }
 
         lines.push(Line::from(spans));
+
+        // Add padding between tracks (except after the last one)
+        if track_idx < static_state.tracks.len() - 1 {
+            lines.push(Line::from(""));
+        }
     }
 
     // Playhead row
