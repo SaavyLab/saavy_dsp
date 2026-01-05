@@ -1,5 +1,5 @@
 use crate::dsp::oscillator::OscillatorBlock;
-use crate::graph::node::{GraphNode, RenderCtx};
+use crate::graph::node::{GraphNode, Modulatable, RenderCtx};
 
 /*
 Audio Oscillator
@@ -67,38 +67,107 @@ Example usage:
 
 pub struct OscNode {
     osc: OscillatorBlock,
+    /// Fixed frequency (Hz). If Some, ignores ctx.frequency and uses this instead.
+    /// Used for drums and other sounds that shouldn't track note pitch.
+    base_frequency: Option<f32>,
+    /// Current frequency after modulation (only used when base_frequency is Some)
+    current_frequency: f32,
+}
+
+/// Parameters that can be modulated on an oscillator
+#[derive(Clone, Copy, Debug)]
+pub enum OscParam {
+    /// Oscillator frequency in Hz
+    Frequency,
 }
 
 impl OscNode {
+    fn new(osc: OscillatorBlock) -> Self {
+        Self {
+            osc,
+            base_frequency: None,
+            current_frequency: 440.0,
+        }
+    }
+
     pub fn sine() -> Self {
-        let osc = OscillatorBlock::sine();
-        Self { osc }
+        Self::new(OscillatorBlock::sine())
     }
 
     pub fn sawtooth() -> Self {
-        let osc = OscillatorBlock::sawtooth();
-        Self { osc }
+        Self::new(OscillatorBlock::sawtooth())
     }
 
     pub fn square() -> Self {
-        let osc = OscillatorBlock::square();
-        Self { osc }
+        Self::new(OscillatorBlock::square())
     }
 
     pub fn triangle() -> Self {
-        let osc = OscillatorBlock::triangle();
-        Self { osc }
+        Self::new(OscillatorBlock::triangle())
     }
 
     pub fn noise() -> Self {
-        let osc = OscillatorBlock::noise();
-        Self { osc }
+        Self::new(OscillatorBlock::noise())
+    }
+
+    /// Set a fixed frequency, ignoring the note pitch from RenderCtx.
+    ///
+    /// Use this for drums and other sounds that shouldn't track keyboard pitch.
+    /// The frequency can then be modulated with `.modulate()`.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Kick drum with pitch envelope: 150Hz -> 50Hz
+    /// OscNode::sine()
+    ///     .with_frequency(50.0)  // Base frequency (what it settles to)
+    ///     .modulate(EnvNode::adsr(0.001, 0.08, 0.0, 0.0), OscParam::Frequency, 100.0)
+    /// ```
+    pub fn with_frequency(mut self, freq: f32) -> Self {
+        self.base_frequency = Some(freq);
+        self.current_frequency = freq;
+        self
     }
 }
 
 impl GraphNode for OscNode {
     fn render_block(&mut self, out: &mut [f32], ctx: &RenderCtx) {
-        self.osc.render(out, ctx);
+        // If we have a fixed frequency, use it (possibly modulated)
+        // Otherwise use the note frequency from ctx
+        if self.base_frequency.is_some() {
+            let modified_ctx = RenderCtx {
+                frequency: self.current_frequency,
+                ..*ctx
+            };
+            self.osc.render(out, &modified_ctx);
+        } else {
+            self.osc.render(out, ctx);
+        }
+    }
+
+    fn note_on(&mut self, _ctx: &RenderCtx) {
+        // Reset current_frequency to base on note-on (important for modulation)
+        if let Some(base) = self.base_frequency {
+            self.current_frequency = base;
+        }
+    }
+}
+
+impl Modulatable for OscNode {
+    type Param = OscParam;
+
+    fn get_param(&self, param: Self::Param) -> f32 {
+        match param {
+            OscParam::Frequency => self.base_frequency.unwrap_or(440.0),
+        }
+    }
+
+    fn apply_modulation(&mut self, param: Self::Param, base: f32, modulation: f32) {
+        match param {
+            OscParam::Frequency => {
+                // Clamp to audible range (20 Hz - 20 kHz)
+                self.current_frequency = (base + modulation).clamp(20.0, 20_000.0);
+            }
+        }
     }
 }
 
