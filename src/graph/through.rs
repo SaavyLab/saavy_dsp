@@ -1,103 +1,100 @@
 use crate::graph::node::{GraphNode, RenderCtx};
 
 /*
-Serial Signal Chain (Through)
-=============================
+Through Node
+============
 
-Through connects two nodes in series, passing the output of the first (source)
-into the second (effect). This is the fundamental building block for creating
-signal processing chains like: oscillator → filter → delay.
+Connects two nodes in series: source output flows into effect input.
+This is how you build signal processing chains.
 
-How It Works:
--------------
-1. Render the source into the output buffer
-2. Pass that buffer through the effect (in-place processing)
+When to Use Through
+-------------------
 
-  Source renders:  [0.5, 0.8, -0.3, 0.9, ...]
-  Effect processes in-place (e.g., filter)
-  Final output:    [0.4, 0.6, -0.2, 0.7, ...]  (filtered result)
+Use `.through()` to chain processors - audio flows from one to the next:
 
-This is different from Amplify (which multiplies) or Mix (which blends).
-Through passes audio through a processor that transforms it.
+  // Classic subtractive synth: oscillator → filter → envelope
+  let voice = OscNode::sawtooth()
+      .through(FilterNode::lowpass(1000.0))
+      .amplify(EnvNode::adsr(0.01, 0.1, 0.7, 0.3));
 
-Common Use Cases:
------------------
+  // Stack multiple effects
+  let processed = source
+      .through(FilterNode::highpass(200.0))
+      .through(DelayNode::new(0.3, 0.4));
 
-1. Subtractive Synthesis Chain:
-   The classic synth signal path.
+  // Steeper filter (two 12dB = 24dB/octave)
+  let steep = source
+      .through(FilterNode::lowpass(2000.0))
+      .through(FilterNode::lowpass(2000.0));
 
-     let voice = OscNode::sawtooth()
-         .through(FilterNode::lowpass(1000.0))
-         .amplify(EnvNode::adsr(0.01, 0.1, 0.7, 0.3));
 
-   - Sawtooth → filter (shape tone) → envelope (shape volume)
+Through vs Amplify vs Mix
+-------------------------
 
-2. Adding Effects:
-   Chain multiple effects in series.
+  .through()  →  Serial chain (source → effect → output)
+  .amplify()  →  Multiplies signals (envelope control)
+  .mix()      →  Adds signals in parallel (layering)
 
-     let wet_signal = source
-         .through(FilterNode::highpass(200.0))
-         .through(DelayNode::new(0.3, 0.4));
+Signal flow:
 
-   - Remove low frequencies, then add delay
-
-3. Multi-stage Filtering:
-   Stack filters for steeper rolloff or complex EQ.
-
-     let steep_filter = source
-         .through(FilterNode::lowpass(2000.0))
-         .through(FilterNode::lowpass(2000.0));
-
-   - Two 12dB filters = 24dB/octave rolloff
-
-Through vs Amplify vs Mix:
---------------------------
-- Through: Serial processing (source → effect → output)
-- Amplify: Multiplication (signal × modulator)
-- Mix:     Parallel blending (dry + wet)
-
-Signal Flow Diagram:
---------------------
   Through: [Source] ──→ [Effect] ──→ output
-
   Amplify: [Signal] ──┬──→ (×) ──→ output
            [Mod]    ──┘
+  Mix:     [A] ────┬──→ (+) ──→ output
+           [B] ────┘
 
-  Mix:     [Dry] ────┬──→ (+) ──→ output
-           [Wet] ────┘
 
-Choose Through when audio flows from one processor to the next.
+Order Matters!
+--------------
+
+  osc.through(filter).through(distortion)  // Distort filtered signal
+  osc.through(distortion).through(filter)  // Filter distorted signal
+  // These sound VERY different!
+
+
+How It Works
+------------
+
+See `dsp/through.rs` for details on:
+- In-place processing (why effects modify buffers directly)
+- Signal chain ordering and its effect on sound
+- Insert vs send/return effect patterns
 */
 
-pub struct Through<S, F> {
+/// Chains two graph nodes in series (source → effect).
+pub struct Through<S, E> {
+    /// The signal source
     source: S,
-    filter: F,
+    /// The effect/processor
+    effect: E,
 }
 
-impl<S, F> Through<S, F> {
-    pub fn new(source: S, filter: F) -> Self {
-        Self { source, filter }
+impl<S, E> Through<S, E> {
+    pub fn new(source: S, effect: E) -> Self {
+        Self { source, effect }
     }
 }
 
-impl<S: GraphNode, F: GraphNode> GraphNode for Through<S, F> {
+impl<S: GraphNode, E: GraphNode> GraphNode for Through<S, E> {
     fn render_block(&mut self, out: &mut [f32], ctx: &RenderCtx) {
+        // Render source into buffer
         self.source.render_block(out, ctx);
-        self.filter.render_block(out, ctx);
+        // Pass buffer through effect (in-place processing)
+        self.effect.render_block(out, ctx);
     }
 
     fn note_on(&mut self, ctx: &RenderCtx) {
         self.source.note_on(ctx);
-        self.filter.note_on(ctx);
+        self.effect.note_on(ctx);
     }
 
     fn note_off(&mut self, ctx: &RenderCtx) {
         self.source.note_off(ctx);
-        self.filter.note_off(ctx);
+        self.effect.note_off(ctx);
     }
 
     fn is_active(&self) -> bool {
-        self.source.is_active() || self.filter.is_active()
+        self.source.is_active() || self.effect.is_active()
     }
 
     fn get_envelope_level(&self) -> Option<f32> {
