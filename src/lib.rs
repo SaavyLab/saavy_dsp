@@ -1,5 +1,6 @@
 pub mod dsp;
 pub mod graph; // Composable audio graph nodes
+pub mod runtime; // TUI application runtime
 pub mod sequencing; // Musical timing and patterns
 pub mod voices; // Pre-built voices (kick, snare, bass, lead)
 

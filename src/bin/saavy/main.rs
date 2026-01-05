@@ -2,13 +2,13 @@
 //!
 //! Run with: cargo run
 
-mod app;
-mod sequencer;
-mod track;
-mod ui;
-
-use app::Saavy;
-use saavy_dsp::{graph::{envelope::EnvNode, extensions::NodeExt, filter::FilterNode, oscillator::OscNode}, pattern, sequencing::*, voices};
+use saavy_dsp::{
+    graph::{envelope::EnvNode, extensions::NodeExt, filter::FilterNode, oscillator::OscNode},
+    pattern,
+    runtime::Saavy,
+    sequencing::*,
+    voices,
+};
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
