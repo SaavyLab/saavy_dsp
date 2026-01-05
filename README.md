@@ -33,10 +33,10 @@ it's a good match when you want to:
 - **filters**: tpt state variable filter (lowpass, highpass, bandpass, notch)
 - **modulation**: lfo with multiple waveforms, modulatable delay
 - **graph architecture**: modular processing nodes with trait-based composition
-- **graph combinators**: `.amplify()`, `.through()`, `.modulate()`
+- **graph combinators**: `.amplify()`, `.through()`, `.mix()`, `.modulate()`
 - **sequencing**: sample-accurate playback with proper time signatures, tuplets, and dotted values
 - **pattern api**: concise macro syntax for musical patterns with subdivisions and triplets
-- **polyphony**: voice allocation, stealing, and mixing for keyboard/midi use cases
+- **voices**: pre-built sounds (kick, snare, hihat, bass, lead) you can use and study
 
 ## quickstart
 
@@ -49,15 +49,13 @@ it's a good match when you want to:
 
 ```rust
 // src/bin/saavy/main.rs - your playground
+use saavy_dsp::{pattern, sequencing::*, voices};
+
 Saavy::new()
     .bpm(120.0)
-    .track(
-        "lead",
-        pattern!(4/4 => [C4, E4, G4, C5]).repeat(4),
-        OscNode::sawtooth()
-            .amplify(EnvNode::adsr(0.01, 0.1, 0.6, 0.2))
-            .through(FilterNode::lowpass(2000.0)),
-    )
+    .track("lead", pattern!(4/4 => [C4, E4, G4, C5]).repeat(4), voices::lead())
+    .track("bass", pattern!(4/4 => [C2, _, G2, _]).repeat(4), voices::bass())
+    .track("kick", pattern!(4/4 => [C2, _, C2, _]).repeat(4), voices::kick())
     .run()
 ```
 
@@ -151,13 +149,10 @@ these are just starting points—tweak the parameters or combine multiple effect
 
 ```bash
 cargo run                         # tui with timeline, oscilloscope, and pattern playback
-cargo run --example cpal_scope    # standalone oscilloscope with chorus effect
-cargo run --example envelope_demo # visualize adsr phases
-cargo run --example simple_poly   # basic polyphonic synth
-cargo run --example pattern_player # pattern api demo
+cargo run --example cpal_scope    # standalone oscilloscope visualization
 ```
 
-the `src/bin/saavy/` binary is your main playground. the examples show specific concepts in isolation.
+the `src/bin/saavy/` binary is your main playground.
 
 ## cargo features
 
@@ -171,11 +166,10 @@ the `src/bin/saavy/` binary is your main playground. the examples show specific 
 ```
 src/
 ├── bin/saavy/    # tui binary - your playground (start here!)
-├── dsp/          # low-level primitives (oscillators, envelopes, filters)
-├── graph/        # composable nodes with educational docs (read these!)
+├── dsp/          # low-level primitives with implementation docs (the HOW)
+├── graph/        # composable nodes with usage docs (the WHAT/WHEN)
 ├── sequencing/   # musical durations, sequences, and timing helpers
-├── synth/        # polyphonic synth internals (voice allocation, messaging)
-└── io/           # midi conversion and audio io types
+└── voices/       # pre-built sounds to use and learn from
 ```
 
 ### key concepts
@@ -186,14 +180,12 @@ src/
 - `FilterNode` – tpt svf with modulatable cutoff and resonance
 - `LfoNode` – low-frequency oscillator for modulation
 - `DelayNode` – modulatable delay line
-- `Amplify` – multiplies two signals for mixing or modulation
-- `Through` – serial signal processing
-- `Modulate` – applies modulation to node parameters
 
-**polyphony**: fixed voice pool with automatic allocation
-- voice stealing (oldest releasing voice)
-- lock-free midi message queue
-- efficient mixing of active voices
+**graph combinators**: connect nodes together
+- `.amplify()` – multiply signals (envelope → oscillator)
+- `.through()` – chain processors (oscillator → filter)
+- `.mix()` – blend signals (layer sounds)
+- `.modulate()` – parameter automation (lfo → filter cutoff)
 
 ## testing
 
@@ -203,16 +195,16 @@ cargo test --lib              # unit tests only
 cargo test --test '*'         # integration tests only
 ```
 
-coverage today includes oscillator phase wrapping, sine accuracy, and polysynth render/voice management integration tests.
+coverage includes oscillator accuracy, envelope behavior, filter responses, and sequencing logic.
 
 ## roadmap
 
 next up:
-- **voice profiles**: ready-made patches (kick, snare, bass, lead) you can study and tweak
-- **midi integration**: keyboard input via `midir` for live performance
 - **more visualizations**: per-track envelopes, spectrum analyzer
+- **more voices**: pads, plucks, fx sounds
+- **effects**: reverb, distortion
 
-longer-term dreams include wavetables, reverb, and a daw-lite terminal experience for composing full tracks.
+longer-term dreams include wavetables, sample playback, and a daw-lite terminal experience for composing full tracks.
 
 ## license
 
