@@ -35,6 +35,11 @@ Triangle: Mellow and soft - weak odd harmonics.
              (much quieter overtones than square)
   - Use: Soft leads, sub-bass, gentle pads
 
+Noise: Random samples - no pitch.
+  - Sound: Hiss, static, breath
+  - Harmonics: All frequencies equally (white noise)
+  - Use: Percussion (snare, hi-hat), wind, texture
+
 What are Harmonics?
 -------------------
 When you play a note at 440 Hz (A4), the harmonics are:
@@ -52,6 +57,7 @@ Example usage:
   let osc = OscNode::sawtooth();  // Rich and bright
   let osc = OscNode::square();    // Hollow and punchy
   let osc = OscNode::triangle();  // Soft and mellow
+  let osc = OscNode::noise();     // Random (percussion)
 
   // Typical subtractive synth: saw → filter → envelope
   let voice = OscNode::sawtooth()
@@ -81,6 +87,11 @@ impl OscNode {
 
     pub fn triangle() -> Self {
         let osc = OscillatorBlock::triangle();
+        Self { osc }
+    }
+
+    pub fn noise() -> Self {
+        let osc = OscillatorBlock::noise();
         Self { osc }
     }
 }
