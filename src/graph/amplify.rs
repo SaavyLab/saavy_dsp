@@ -1,5 +1,5 @@
 use crate::{
-    dsp::amplify::multiply_in_place,
+    dsp::amplify::{apply_gain, multiply_in_place},
     graph::node::{GraphNode, RenderCtx},
     MAX_BLOCK_SIZE,
 };
@@ -111,5 +111,69 @@ impl<S: GraphNode, M: GraphNode> GraphNode for Amplify<S, M> {
         self.modulator
             .get_envelope_level()
             .or_else(|| self.signal.get_envelope_level())
+    }
+}
+
+/*
+Gain Node
+=========
+
+Applies a constant gain (volume) multiplier to a signal. Unlike Amplify which
+uses another GraphNode as the modulator, Gain just multiplies by a fixed value.
+
+Use this for:
+- Mixing balance (make one voice louder/quieter than others)
+- Headroom control (prevent clipping by reducing level)
+- Boosting quiet signals
+
+Example:
+    // Make the bass 2x louder
+    let loud_bass = OscNode::sawtooth().gain(2.0);
+
+    // Reduce volume to 50%
+    let quiet_lead = OscNode::square().gain(0.5);
+
+Common gain values:
+    0.0  = silence
+    0.5  = -6 dB (half volume)
+    1.0  = unity (no change)
+    2.0  = +6 dB (double volume)
+    4.0  = +12 dB (4x volume)
+*/
+
+/// Applies a constant gain multiplier to a signal.
+pub struct Gain<S> {
+    /// The signal source
+    pub signal: S,
+    /// The gain multiplier
+    pub gain: f32,
+}
+
+impl<S> Gain<S> {
+    pub fn new(signal: S, gain: f32) -> Self {
+        Self { signal, gain }
+    }
+}
+
+impl<S: GraphNode> GraphNode for Gain<S> {
+    fn render_block(&mut self, out: &mut [f32], ctx: &RenderCtx) {
+        self.signal.render_block(out, ctx);
+        apply_gain(out, self.gain);
+    }
+
+    fn note_on(&mut self, ctx: &RenderCtx) {
+        self.signal.note_on(ctx);
+    }
+
+    fn note_off(&mut self, ctx: &RenderCtx) {
+        self.signal.note_off(ctx);
+    }
+
+    fn is_active(&self) -> bool {
+        self.signal.is_active()
+    }
+
+    fn get_envelope_level(&self) -> Option<f32> {
+        self.signal.get_envelope_level()
     }
 }

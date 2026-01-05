@@ -213,6 +213,22 @@ impl PatternChain {
         self
     }
 
+    /// Concatenate another chain onto this one
+    ///
+    /// This is useful when you have two chains you want to play in sequence,
+    /// for example an intro followed by a main section.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let intro = pattern!(4/4 => [C4, _, _, _]).repeat(4);
+    /// let main = pattern!(4/4 => [C4, E4, G4, C5]).repeat(8);
+    /// let full = intro.concat(main);
+    /// ```
+    pub fn concat(mut self, other: PatternChain) -> Self {
+        self.patterns.extend(other.patterns);
+        self
+    }
+
     /// Repeat the entire chain n times
     pub fn repeat(mut self, n: usize) -> Self {
         let original = self.patterns.clone();
