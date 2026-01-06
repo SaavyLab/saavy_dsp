@@ -1,5 +1,6 @@
 use crate::{
     dsp::delay::DelayLine,
+    dsp::mix::blend_dry_wet,
     graph::node::{GraphNode, Modulatable},
 };
 
@@ -91,8 +92,8 @@ impl GraphNode for DelayNode {
             let input_with_feedback = dry + (wet * self.feedback);
             self.delay_line.write(input_with_feedback);
 
-            // Mix
-            *sample = dry * (1.0 - self.mix) + wet * self.mix;
+            // Mix dry and wet using shared helper
+            *sample = blend_dry_wet(dry, wet, self.mix);
 
             // Advance delay towards target across the block
             delay_s += step;

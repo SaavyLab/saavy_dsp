@@ -1,3 +1,4 @@
+use crate::dsp::mix::blend_dry_wet;
 use crate::dsp::reverb::SchroederReverb;
 use crate::graph::node::{GraphNode, Modulatable, RenderCtx};
 
@@ -120,7 +121,7 @@ impl GraphNode for ReverbNode {
         for sample in out.iter_mut() {
             let dry = *sample;
             let wet = self.reverb.process(dry);
-            *sample = dry * (1.0 - self.mix) + wet * self.mix;
+            *sample = blend_dry_wet(dry, wet, self.mix);
         }
     }
 

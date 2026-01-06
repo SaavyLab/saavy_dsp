@@ -184,6 +184,35 @@ pub fn sum_in_place(a: &mut [f32], b: &[f32]) {
     }
 }
 
+/// Blend dry and wet samples using linear crossfade (single sample version).
+///
+/// output = (dry × (1-mix)) + (wet × mix)
+///
+/// This is the common dry/wet mixing pattern used in effects.
+#[inline]
+pub fn blend_dry_wet(dry: f32, wet: f32, mix: f32) -> f32 {
+    dry * (1.0 - mix) + wet * mix
+}
+
+/// Apply dry/wet mixing to a buffer, blending original (dry) with processed (wet).
+///
+/// wet[i] = (dry[i] × (1-mix)) + (wet[i] × mix)
+///
+/// Modifies `wet` in-place, using `dry` as the unprocessed reference.
+#[inline]
+pub fn apply_dry_wet(dry: &[f32], wet: &mut [f32], mix: f32) {
+    debug_assert_eq!(dry.len(), wet.len());
+
+    if mix >= 1.0 {
+        return; // 100% wet, nothing to do
+    }
+
+    let dry_amount = 1.0 - mix;
+    for (wet_sample, &dry_sample) in wet.iter_mut().zip(dry.iter()) {
+        *wet_sample = dry_sample * dry_amount + *wet_sample * mix;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,5 +298,46 @@ mod tests {
 
         // (1.0 × 0.5) + (1.0 × 0.5) = 1.0, not 2.0
         assert_eq!(out[0], 1.0);
+    }
+
+    #[test]
+    fn test_blend_dry_wet() {
+        // All dry
+        assert_eq!(blend_dry_wet(1.0, 0.5, 0.0), 1.0);
+        // All wet
+        assert_eq!(blend_dry_wet(1.0, 0.5, 1.0), 0.5);
+        // 50/50 mix
+        assert_eq!(blend_dry_wet(1.0, 0.0, 0.5), 0.5);
+    }
+
+    #[test]
+    fn test_apply_dry_wet_all_dry() {
+        let dry = [1.0, 0.5, -0.5, -1.0];
+        let mut wet = [0.0, 0.0, 0.0, 0.0];
+
+        apply_dry_wet(&dry, &mut wet, 0.0);
+
+        assert_eq!(wet, [1.0, 0.5, -0.5, -1.0]); // All dry
+    }
+
+    #[test]
+    fn test_apply_dry_wet_all_wet() {
+        let dry = [0.0, 0.0, 0.0, 0.0];
+        let mut wet = [1.0, 0.5, -0.5, -1.0];
+        let original = wet.clone();
+
+        apply_dry_wet(&dry, &mut wet, 1.0);
+
+        assert_eq!(wet, original); // All wet, unchanged
+    }
+
+    #[test]
+    fn test_apply_dry_wet_half() {
+        let dry = [1.0, 1.0, 1.0, 1.0];
+        let mut wet = [0.0, 0.0, 0.0, 0.0];
+
+        apply_dry_wet(&dry, &mut wet, 0.5);
+
+        assert_eq!(wet, [0.5, 0.5, 0.5, 0.5]); // 50/50 mix
     }
 }

@@ -65,18 +65,23 @@ pub fn hard_clip(sample: f32, drive: f32, threshold: f32) -> f32 {
 /// More extreme than clipping at high drive values.
 #[inline]
 pub fn foldback(sample: f32, drive: f32, threshold: f32) -> f32 {
+    let threshold = threshold.max(0.01); // Prevent zero/negative threshold
     let mut x = sample * drive;
 
-    // Fold the signal when it exceeds threshold
-    while x > threshold || x < -threshold {
+    // Fold the signal when it exceeds threshold (limited iterations for safety)
+    const MAX_FOLDS: u32 = 32;
+    for _ in 0..MAX_FOLDS {
         if x > threshold {
             x = 2.0 * threshold - x;
         } else if x < -threshold {
             x = -2.0 * threshold - x;
+        } else {
+            break;
         }
     }
 
-    x
+    // Final clamp as safety net
+    x.clamp(-threshold, threshold)
 }
 
 /// Apply soft clipping to an entire buffer in place.
@@ -145,5 +150,28 @@ mod tests {
         // 0.7 * 2 = 1.4, folds to 2*1 - 1.4 = 0.6
         let output = foldback(0.7, 2.0, 1.0);
         assert!((output - 0.6).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_foldback_extreme_drive() {
+        // Test that foldback doesn't hang with very high drive
+        let output = foldback(1.0, 100.0, 0.5);
+        assert!(output.is_finite());
+        assert!(output.abs() <= 0.5);
+    }
+
+    #[test]
+    fn test_foldback_zero_threshold() {
+        // Zero threshold should be clamped to minimum
+        let output = foldback(1.0, 2.0, 0.0);
+        assert!(output.is_finite());
+        assert!(output.abs() <= 0.01); // Clamped to 0.01 threshold
+    }
+
+    #[test]
+    fn test_foldback_negative_threshold() {
+        // Negative threshold should be clamped to minimum
+        let output = foldback(1.0, 2.0, -1.0);
+        assert!(output.is_finite());
     }
 }
