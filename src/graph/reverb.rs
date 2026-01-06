@@ -63,12 +63,15 @@ pub enum ReverbParam {
 }
 
 /// Schroeder reverb effect
+///
+/// Delay buffers are pre-allocated at construction (RT-safe). On first render,
+/// the delay times are configured using the sample rate from `RenderCtx`.
 pub struct ReverbNode {
     reverb: SchroederReverb,
     room_size: f32,
     damping: f32,
     mix: f32,
-    initialized: bool,
+    configured: bool,
 }
 
 impl ReverbNode {
@@ -77,8 +80,11 @@ impl ReverbNode {
     /// - `room_size`: 0.0 (small room) to 1.0 (large hall)
     /// - `damping`: 0.0 (bright) to 1.0 (dark/muffled)
     /// - `mix`: 0.0 (dry) to 1.0 (wet)
+    ///
+    /// Buffers are pre-allocated (no allocation in audio thread).
+    /// Delay times are configured on first render using ctx.sample_rate.
     pub fn new(room_size: f32, damping: f32, mix: f32) -> Self {
-        // Create with default sample rate, will be updated on first render
+        // Pre-allocate with default sample rate (will be reconfigured on first render)
         let mut reverb = SchroederReverb::new(48000.0);
         reverb.set_room_size(room_size);
         reverb.set_damping(damping);
@@ -88,7 +94,7 @@ impl ReverbNode {
             room_size: room_size.clamp(0.0, 1.0),
             damping: damping.clamp(0.0, 1.0),
             mix: mix.clamp(0.0, 1.0),
-            initialized: false,
+            configured: false,
         }
     }
 
@@ -110,12 +116,10 @@ impl ReverbNode {
 
 impl GraphNode for ReverbNode {
     fn render_block(&mut self, out: &mut [f32], ctx: &RenderCtx) {
-        // Initialize reverb with correct sample rate on first render
-        if !self.initialized {
-            self.reverb = SchroederReverb::new(ctx.sample_rate);
-            self.reverb.set_room_size(self.room_size);
-            self.reverb.set_damping(self.damping);
-            self.initialized = true;
+        // Configure delay times for actual sample rate on first render (RT-safe)
+        if !self.configured {
+            self.reverb.configure(ctx.sample_rate);
+            self.configured = true;
         }
 
         for sample in out.iter_mut() {

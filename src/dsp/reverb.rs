@@ -40,9 +40,15 @@
 //! - **Damping**: High-frequency absorption (higher = darker sound)
 //! - **Feedback**: Controls reverb decay time
 
-/// A simple comb filter for reverb
+/// Max comb filter delay: 50ms at 192kHz = 9600 samples
+const MAX_COMB_DELAY: usize = 9600;
+/// Max allpass filter delay: 10ms at 192kHz = 1920 samples
+const MAX_ALLPASS_DELAY: usize = 1920;
+
+/// A simple comb filter for reverb (pre-allocated, RT-safe)
 pub struct CombFilter {
-    buffer: Vec<f32>,
+    buffer: [f32; MAX_COMB_DELAY],
+    delay_samples: usize,
     write_pos: usize,
     feedback: f32,
     damp: f32,
@@ -52,7 +58,8 @@ pub struct CombFilter {
 impl CombFilter {
     pub fn new(delay_samples: usize) -> Self {
         Self {
-            buffer: vec![0.0; delay_samples.max(1)],
+            buffer: [0.0; MAX_COMB_DELAY],
+            delay_samples: delay_samples.min(MAX_COMB_DELAY).max(1),
             write_pos: 0,
             feedback: 0.5,
             damp: 0.5,
@@ -68,6 +75,12 @@ impl CombFilter {
         self.damp = damp.clamp(0.0, 1.0);
     }
 
+    /// Set delay length (RT-safe, no allocation)
+    pub fn set_delay(&mut self, delay_samples: usize) {
+        self.delay_samples = delay_samples.min(MAX_COMB_DELAY).max(1);
+        self.write_pos = self.write_pos % self.delay_samples;
+    }
+
     pub fn process(&mut self, input: f32) -> f32 {
         let output = self.buffer[self.write_pos];
 
@@ -77,8 +90,8 @@ impl CombFilter {
         // Write new sample: input + filtered feedback
         self.buffer[self.write_pos] = input + self.filter_state * self.feedback;
 
-        // Advance write position
-        self.write_pos = (self.write_pos + 1) % self.buffer.len();
+        // Advance write position (wrap at actual delay length)
+        self.write_pos = (self.write_pos + 1) % self.delay_samples;
 
         output
     }
@@ -86,12 +99,14 @@ impl CombFilter {
     pub fn reset(&mut self) {
         self.buffer.fill(0.0);
         self.filter_state = 0.0;
+        self.write_pos = 0;
     }
 }
 
-/// An allpass filter for reverb diffusion
+/// An allpass filter for reverb diffusion (pre-allocated, RT-safe)
 pub struct AllpassFilter {
-    buffer: Vec<f32>,
+    buffer: [f32; MAX_ALLPASS_DELAY],
+    delay_samples: usize,
     write_pos: usize,
     feedback: f32,
 }
@@ -99,7 +114,8 @@ pub struct AllpassFilter {
 impl AllpassFilter {
     pub fn new(delay_samples: usize) -> Self {
         Self {
-            buffer: vec![0.0; delay_samples.max(1)],
+            buffer: [0.0; MAX_ALLPASS_DELAY],
+            delay_samples: delay_samples.min(MAX_ALLPASS_DELAY).max(1),
             write_pos: 0,
             feedback: 0.5,
         }
@@ -107,6 +123,12 @@ impl AllpassFilter {
 
     pub fn set_feedback(&mut self, feedback: f32) {
         self.feedback = feedback.clamp(0.0, 0.9);
+    }
+
+    /// Set delay length (RT-safe, no allocation)
+    pub fn set_delay(&mut self, delay_samples: usize) {
+        self.delay_samples = delay_samples.min(MAX_ALLPASS_DELAY).max(1);
+        self.write_pos = self.write_pos % self.delay_samples;
     }
 
     pub fn process(&mut self, input: f32) -> f32 {
@@ -118,13 +140,15 @@ impl AllpassFilter {
         // Write: input + feedback * output
         self.buffer[self.write_pos] = input + self.feedback * output;
 
-        self.write_pos = (self.write_pos + 1) % self.buffer.len();
+        // Advance write position (wrap at actual delay length)
+        self.write_pos = (self.write_pos + 1) % self.delay_samples;
 
         output
     }
 
     pub fn reset(&mut self) {
         self.buffer.fill(0.0);
+        self.write_pos = 0;
     }
 }
 
@@ -159,6 +183,21 @@ impl SchroederReverb {
         ];
 
         Self { combs, allpasses }
+    }
+
+    /// Configure delay times for a specific sample rate (RT-safe, no allocation).
+    ///
+    /// Call this when sample rate changes or on first render.
+    pub fn configure(&mut self, sample_rate: f32) {
+        let comb_delays_ms = [29.7, 37.1, 41.1, 43.7];
+        let allpass_delays_ms = [5.0, 1.7];
+
+        for (comb, &delay_ms) in self.combs.iter_mut().zip(comb_delays_ms.iter()) {
+            comb.set_delay((delay_ms * sample_rate / 1000.0) as usize);
+        }
+        for (allpass, &delay_ms) in self.allpasses.iter_mut().zip(allpass_delays_ms.iter()) {
+            allpass.set_delay((delay_ms * sample_rate / 1000.0) as usize);
+        }
     }
 
     /// Set the room size (scales feedback for longer/shorter decay)
