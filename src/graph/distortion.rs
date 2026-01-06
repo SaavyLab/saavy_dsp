@@ -1,5 +1,7 @@
 use crate::dsp::distortion::{foldback_buffer, hard_clip_buffer, soft_clip_buffer};
+use crate::dsp::mix::apply_dry_wet;
 use crate::graph::node::{GraphNode, Modulatable, RenderCtx};
+use crate::MAX_BLOCK_SIZE;
 
 /*
 Distortion Node
@@ -72,6 +74,7 @@ pub struct DistortionNode {
     drive: f32,
     mix: f32,
     threshold: f32, // For hard clip and foldback
+    dry_buffer: [f32; MAX_BLOCK_SIZE], // Pre-allocated for allocation-free rendering
 }
 
 impl DistortionNode {
@@ -82,6 +85,7 @@ impl DistortionNode {
             drive: drive.max(1.0),
             mix: mix.clamp(0.0, 1.0),
             threshold: 1.0,
+            dry_buffer: [0.0; MAX_BLOCK_SIZE],
         }
     }
 
@@ -92,6 +96,7 @@ impl DistortionNode {
             drive: drive.max(1.0),
             mix: mix.clamp(0.0, 1.0),
             threshold: 1.0,
+            dry_buffer: [0.0; MAX_BLOCK_SIZE],
         }
     }
 
@@ -102,21 +107,30 @@ impl DistortionNode {
             drive: drive.max(1.0),
             mix: mix.clamp(0.0, 1.0),
             threshold: 1.0,
+            dry_buffer: [0.0; MAX_BLOCK_SIZE],
         }
     }
 
     /// Set a custom threshold for hard clip and foldback modes.
     /// Lower threshold = more extreme distortion at same drive.
+    ///
+    /// # Threshold values
+    /// - Values below 0.01 are clamped to 0.01 for numerical stability
+    /// - Typical range: 0.1 to 1.0
+    /// - Default: 1.0
     pub fn with_threshold(mut self, threshold: f32) -> Self {
-        self.threshold = threshold.max(0.1);
+        // Clamp to minimum for numerical stability (prevents divide-by-zero-like issues)
+        self.threshold = threshold.max(0.01);
         self
     }
 }
 
 impl GraphNode for DistortionNode {
     fn render_block(&mut self, out: &mut [f32], _ctx: &RenderCtx) {
-        // Store dry signal for mixing
-        let dry: Vec<f32> = out.to_vec();
+        let len = out.len().min(MAX_BLOCK_SIZE);
+
+        // Store dry signal in pre-allocated buffer (no allocation)
+        self.dry_buffer[..len].copy_from_slice(&out[..len]);
 
         // Apply distortion based on mode
         match self.mode {
@@ -131,13 +145,8 @@ impl GraphNode for DistortionNode {
             }
         }
 
-        // Mix dry/wet
-        if self.mix < 1.0 {
-            let dry_amount = 1.0 - self.mix;
-            for (wet, dry_sample) in out.iter_mut().zip(dry.iter()) {
-                *wet = *wet * self.mix + dry_sample * dry_amount;
-            }
-        }
+        // Mix dry/wet using shared helper
+        apply_dry_wet(&self.dry_buffer[..len], &mut out[..len], self.mix);
     }
 }
 
@@ -206,6 +215,35 @@ mod tests {
 
         // All values should be within threshold
         for sample in &buffer {
+            assert!(sample.abs() <= 0.5 + 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_threshold_validation() {
+        // Zero threshold should be clamped to minimum
+        let node = DistortionNode::hard(2.0, 1.0).with_threshold(0.0);
+        assert!(node.threshold >= 0.01);
+
+        // Negative threshold should be clamped to minimum
+        let node = DistortionNode::foldback(2.0, 1.0).with_threshold(-1.0);
+        assert!(node.threshold >= 0.01);
+
+        // Valid threshold should be preserved
+        let node = DistortionNode::hard(2.0, 1.0).with_threshold(0.5);
+        assert!((node.threshold - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_foldback_extreme_values() {
+        let mut node = DistortionNode::foldback(100.0, 1.0).with_threshold(0.5);
+        let mut buffer = vec![1.0, -1.0, 0.5, -0.5];
+
+        node.render_block(&mut buffer, &test_ctx());
+
+        // All values should be finite and within threshold
+        for sample in &buffer {
+            assert!(sample.is_finite());
             assert!(sample.abs() <= 0.5 + 1e-6);
         }
     }

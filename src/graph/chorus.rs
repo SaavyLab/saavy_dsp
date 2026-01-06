@@ -1,4 +1,5 @@
 use crate::dsp::delay::DelayLine;
+use crate::dsp::mix::blend_dry_wet;
 use crate::graph::node::{GraphNode, Modulatable, RenderCtx};
 use std::f32::consts::TAU;
 
@@ -115,10 +116,8 @@ impl GraphNode for ChorusNode {
             // Write current sample to delay line
             self.delay_line.write(*sample);
 
-            // Mix dry and wet
-            let dry = *sample;
-            let wet = delayed;
-            *sample = dry * (1.0 - self.mix) + wet * self.mix;
+            // Mix dry and wet using shared helper
+            *sample = blend_dry_wet(*sample, delayed, self.mix);
 
             // Advance LFO phase
             self.lfo_phase += phase_inc;

@@ -270,4 +270,17 @@ mod tests {
 
         assert!(has_tail, "Reverb should produce a tail after impulse");
     }
+
+    #[test]
+    fn test_reverb_stability() {
+        let mut reverb = SchroederReverb::new(48000.0);
+        reverb.set_room_size(1.0); // Maximum feedback
+
+        // Process many samples and ensure no explosion
+        for _ in 0..10000 {
+            let out = reverb.process(0.1);
+            assert!(out.is_finite(), "Reverb output should be finite");
+            assert!(out.abs() < 10.0, "Reverb output unstable: {}", out);
+        }
+    }
 }
