@@ -12,6 +12,8 @@
 pub mod amplify;
 /// Time-domain delay line with optional interpolation.
 pub mod delay;
+/// Waveshaping distortion (soft clip, hard clip, foldback).
+pub mod distortion;
 /// Attack/decay/sustain/release envelope generator.
 pub mod envelope;
 /// State-variable filter implementation with multiple responses.
@@ -24,6 +26,8 @@ pub mod mix;
 pub mod modulate;
 /// Oscillator waveforms and noise sources.
 pub mod oscillator;
+/// Reverb via comb and allpass filter networks.
+pub mod reverb;
 /// Serial signal chain concepts.
 pub mod through;
 

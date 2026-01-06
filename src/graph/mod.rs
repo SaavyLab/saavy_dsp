@@ -10,8 +10,12 @@ pub use node::{GraphNode, RenderCtx};
 
 /// Multiply two signals together (amplitude or ring modulation).
 pub mod amplify;
+/// Chorus effect - modulated delay for thickening.
+pub mod chorus;
 /// Feedback delay effect with realtime-safe modulation.
 pub mod delay;
+/// Waveshaping distortion (soft, hard, foldback).
+pub mod distortion;
 /// Envelope generator node exposing ADSR state.
 pub mod envelope;
 /// Fluent combinators (`.amplify()`, `.mix()`, etc.).
@@ -28,5 +32,7 @@ pub mod modulate;
 pub mod node;
 /// Audio-band oscillators and noise sources.
 pub mod oscillator;
+/// Reverb effect - room/hall simulation.
+pub mod reverb;
 /// Serial chaining of two nodes (source → effect).
 pub mod through;

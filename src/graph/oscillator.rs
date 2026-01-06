@@ -72,6 +72,9 @@ pub struct OscNode {
     base_frequency: Option<f32>,
     /// Current frequency after modulation (only used when base_frequency is Some)
     current_frequency: f32,
+    /// Detune in cents (-100 to +100 typical). 100 cents = 1 semitone.
+    /// Used for supersaw, reese bass, and other "thick" sounds.
+    detune_cents: f32,
 }
 
 /// Parameters that can be modulated on an oscillator
@@ -79,6 +82,8 @@ pub struct OscNode {
 pub enum OscParam {
     /// Oscillator frequency in Hz
     Frequency,
+    /// Detune in cents (100 cents = 1 semitone)
+    Detune,
 }
 
 impl OscNode {
@@ -87,6 +92,7 @@ impl OscNode {
             osc,
             base_frequency: None,
             current_frequency: 440.0,
+            detune_cents: 0.0,
         }
     }
 
@@ -127,21 +133,51 @@ impl OscNode {
         self.current_frequency = freq;
         self
     }
+
+    /// Set detune in cents (100 cents = 1 semitone).
+    ///
+    /// Use this to create "thick" sounds by layering detuned oscillators.
+    /// Typical values: ±5-15 cents for subtle width, ±20-50 for obvious detune.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Reese bass: two saws slightly detuned
+    /// OscNode::sawtooth()
+    ///     .mix(OscNode::sawtooth().with_detune(12.0), 0.5)
+    ///     .through(FilterNode::lowpass(300.0))
+    ///
+    /// // Supersaw: multiple detuned saws
+    /// OscNode::sawtooth()
+    ///     .mix(OscNode::sawtooth().with_detune(-15.0), 0.33)
+    ///     .mix(OscNode::sawtooth().with_detune(15.0), 0.33)
+    /// ```
+    pub fn with_detune(mut self, cents: f32) -> Self {
+        self.detune_cents = cents;
+        self
+    }
 }
 
 impl GraphNode for OscNode {
     fn render_block(&mut self, out: &mut [f32], ctx: &RenderCtx) {
-        // If we have a fixed frequency, use it (possibly modulated)
-        // Otherwise use the note frequency from ctx
-        if self.base_frequency.is_some() {
-            let modified_ctx = RenderCtx {
-                frequency: self.current_frequency,
-                ..*ctx
-            };
-            self.osc.render(out, &modified_ctx);
+        // Determine base frequency: fixed or from note
+        let base_freq = if self.base_frequency.is_some() {
+            self.current_frequency
         } else {
-            self.osc.render(out, ctx);
-        }
+            ctx.frequency
+        };
+
+        // Apply detune: frequency * 2^(cents/1200)
+        let final_freq = if self.detune_cents != 0.0 {
+            base_freq * 2.0_f32.powf(self.detune_cents / 1200.0)
+        } else {
+            base_freq
+        };
+
+        let modified_ctx = RenderCtx {
+            frequency: final_freq,
+            ..*ctx
+        };
+        self.osc.render(out, &modified_ctx);
     }
 
     fn note_on(&mut self, _ctx: &RenderCtx) {
@@ -158,6 +194,7 @@ impl Modulatable for OscNode {
     fn get_param(&self, param: Self::Param) -> f32 {
         match param {
             OscParam::Frequency => self.base_frequency.unwrap_or(440.0),
+            OscParam::Detune => self.detune_cents,
         }
     }
 
@@ -166,6 +203,10 @@ impl Modulatable for OscNode {
             OscParam::Frequency => {
                 // Clamp to audible range (20 Hz - 20 kHz)
                 self.current_frequency = (base + modulation).clamp(20.0, 20_000.0);
+            }
+            OscParam::Detune => {
+                // Clamp to reasonable range (±2 semitones)
+                self.detune_cents = (base + modulation).clamp(-200.0, 200.0);
             }
         }
     }

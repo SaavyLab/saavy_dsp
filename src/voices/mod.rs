@@ -8,25 +8,43 @@
 //! ```ignore
 //! use saavy_dsp::voices;
 //!
+//! // Drums
 //! let kick = voices::kick();
 //! let snare = voices::snare();
 //! let hihat = voices::hihat();
+//! let openhat = voices::openhat();
+//! let clap = voices::clap();
+//! let tom = voices::tom();
+//!
+//! // Melodic
 //! let bass = voices::bass();
 //! let lead = voices::lead();
+//! let pad = voices::pad();
+//! let pluck = voices::pluck();
 //! ```
 
 mod bass;
+mod clap;
 mod crash;
 mod hihat;
 mod kick;
 mod lead;
+mod openhat;
+mod pad;
+mod pluck;
 mod ride;
 mod snare;
+mod tom;
 
 pub use bass::bass;
+pub use clap::clap;
 pub use crash::crash;
 pub use hihat::hihat;
 pub use kick::kick;
 pub use lead::lead;
+pub use openhat::openhat;
+pub use pad::pad;
+pub use pluck::pluck;
 pub use ride::ride;
 pub use snare::snare;
+pub use tom::tom;
