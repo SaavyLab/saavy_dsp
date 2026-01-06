@@ -74,7 +74,7 @@ fn main() -> color_eyre::Result<()> {
 
     // Classic reese: two slightly detuned saws create beating/movement
     let reese_bass = OscNode::sawtooth()
-        .mix(OscNode::sawtooth(), 0.5)  // Would be better with detune, but this adds fatness
+        .mix(OscNode::sawtooth().with_detune(12.0), 0.5)  // +12 cents detune for that animated pulse
         .through(FilterNode::lowpass(300.0))
         .amplify(EnvNode::adsr(0.05, 0.2, 0.6, 0.4))
         .gain(2.5);  // Boost to sit with the wub
