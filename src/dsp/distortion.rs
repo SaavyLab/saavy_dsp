@@ -1,43 +1,168 @@
-//! Distortion / Waveshaping
-//!
-//! Distortion adds harmonics by reshaping the waveform. The "drive" parameter
-//! controls how aggressively the signal is pushed into the nonlinear region.
-//!
-//! # How Waveshaping Works
-//!
-//! A waveshaper applies a transfer function to each sample:
-//!   output = f(input * drive)
-//!
-//! When drive is low (1.0), the signal stays in the linear region of f()
-//! and passes through mostly unchanged. As drive increases, the signal hits
-//! the nonlinear parts of f(), creating harmonic distortion.
-//!
-//! # Common Waveshaping Functions
-//!
-//! Soft Clip (tanh-style):
-//!   f(x) = x / (1 + |x|)
-//!   - Smooth, warm saturation
-//!   - Gradually compresses peaks
-//!   - Common in tube amp simulations
-//!
-//! Hard Clip:
-//!   f(x) = clamp(x, -threshold, threshold)
-//!   - Harsh, buzzy distortion
-//!   - Creates odd harmonics (like square wave)
-//!   - Think: guitar fuzz pedal
-//!
-//! Foldback:
-//!   When x exceeds threshold, it "folds" back on itself
-//!   - Creates complex, metallic harmonics
-//!   - Popular in modular synthesis
-//!   - More extreme than clipping
-//!
-//! # Drive Values
-//!
-//!   1.0  = Clean (no distortion)
-//!   2-4  = Warm saturation
-//!   5-10 = Obvious distortion
-//!   10+  = Heavy, aggressive
+/*
+Distortion / Waveshaping Implementation
+=======================================
+
+Distortion adds harmonics by reshaping the waveform - it's how we add grit,
+warmth, or aggression to a sound. This module provides three classic
+waveshaping algorithms, each with a distinct character.
+
+
+Vocabulary
+----------
+
+  waveshaping   A technique where each sample is transformed by a function.
+                The function's shape determines the distortion character.
+
+  transfer      The function f(x) that maps input to output. Plot it with
+  function      input on x-axis, output on y-axis. A diagonal line = clean.
+
+  drive         Pre-gain applied before the transfer function. Higher drive
+                pushes the signal further into the nonlinear region.
+
+  threshold     For clipping: the level beyond which the signal is affected.
+                Lower threshold = more aggressive effect.
+
+  harmonics     New frequencies created by distortion. A pure sine wave
+                becomes a complex tone with overtones.
+
+  odd harmonics Frequencies at 3×, 5×, 7×... the fundamental. Created by
+                symmetric clipping. Sound "hollow" or "square-wave-like."
+
+  even harmonics  Frequencies at 2×, 4×, 6×... the fundamental. Created by
+                asymmetric distortion. Sound "warm" or "tube-like."
+
+
+How Waveshaping Works
+---------------------
+
+A waveshaper applies a transfer function to each sample:
+
+    output = f(input × drive)
+
+When drive is low (1.0), the signal stays in the LINEAR region of f()
+and passes through mostly unchanged. As drive increases, the signal
+hits the NONLINEAR parts of f(), creating harmonic distortion.
+
+    Input      Transfer Function      Output
+
+     ╱╲            ___                 ___
+    ╱  ╲     →    ╱   ╲      →        ╱   ╲
+   ╱    ╲        ╱     ╲             ╱     ╲
+              (soft clip)         (compressed peaks)
+
+
+Transfer Functions
+------------------
+
+SOFT CLIP: f(x) = x / (1 + |x|)
+
+    Smooth, warm saturation that gradually compresses peaks.
+    Common in tube amp simulations. Asymptotically approaches ±1.
+
+    Output
+    +1 │        ____________
+       │      ╱
+       │    ╱
+     0 │──╱─────────────────
+       │╱
+       │
+    -1 │____________
+       └─────────────────────→ Input (×drive)
+         -10     0      +10
+
+    Character: Warm, musical, forgiving. Works on everything.
+
+
+HARD CLIP: f(x) = clamp(x, -threshold, +threshold)
+
+    Abrupt limiting at the threshold. Creates a "squared off" waveform
+    rich in odd harmonics. Think: guitar fuzz pedal.
+
+    Output
+    +t │    ┌───────────────
+       │    │
+       │   ╱│
+     0 │──╱─│───────────────
+       │╱   │
+       │    │
+    -t │────┘
+       └─────────────────────→ Input (×drive)
+         -t      0      +t
+
+    Character: Harsh, buzzy, aggressive. Great for leads and bass.
+
+
+FOLDBACK: When x exceeds threshold, it "folds" back on itself
+
+    Instead of clipping flat, the waveform reflects. Creates complex,
+    metallic harmonics. Popular in modular synthesis.
+
+    Output
+    +t │    ╱╲    ╱╲    ╱╲
+       │   ╱  ╲  ╱  ╲  ╱
+       │  ╱    ╲╱    ╲╱
+     0 │─╱──────────────────
+       │╱
+    -t │
+       └─────────────────────→ Input (×drive)
+              (continues folding)
+
+    Character: Metallic, synthy, extreme. Great for sound design.
+
+
+The Math
+--------
+
+SOFT CLIP:
+    y = x / (1 + |x|)
+
+    where x = input × drive
+
+    Example: input = 0.8, drive = 5.0
+      x = 0.8 × 5.0 = 4.0
+      y = 4.0 / (1 + 4.0) = 4.0 / 5.0 = 0.8
+
+    Note: Output approaches ±1 but never exceeds it. Self-limiting.
+
+HARD CLIP:
+    y = clamp(x, -threshold, +threshold)
+
+    Example: input = 0.8, drive = 2.0, threshold = 1.0
+      x = 0.8 × 2.0 = 1.6
+      y = clamp(1.6, -1.0, 1.0) = 1.0
+
+FOLDBACK:
+    While |x| > threshold:
+        if x > threshold:  x = 2×threshold - x
+        if x < -threshold: x = -2×threshold - x
+
+    Example: input = 0.7, drive = 2.0, threshold = 1.0
+      x = 0.7 × 2.0 = 1.4
+      x > 1.0, so: x = 2×1.0 - 1.4 = 0.6
+      Now |x| < threshold, done. y = 0.6
+
+
+Drive Values Reference
+----------------------
+
+    1.0   = Clean (no distortion)
+    2-4   = Warm saturation (subtle harmonics)
+    5-10  = Obvious distortion (clearly audible effect)
+    10+   = Heavy, aggressive (extreme transformation)
+
+
+Implementation Notes
+--------------------
+
+Foldback uses a maximum iteration count to prevent infinite loops when
+drive is extremely high. The final clamp ensures bounded output.
+
+All functions are marked #[inline] for performance - waveshaping is
+typically called once per sample in a hot loop.
+
+The soft clip function x/(1+|x|) is cheaper than tanh() while sounding
+nearly identical. It avoids the transcendental function call.
+*/
 
 /// Soft clipping using x / (1 + |x|) transfer function.
 ///
