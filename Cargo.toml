@@ -27,9 +27,14 @@ cpal = "0.16"
 rustfft = "6"
 
 [dev-dependencies]
+criterion = "0.8.1"
 
 [build-dependencies]
 
 [[bin]]
 name = "saavy"
 path = "src/bin/saavy/main.rs"
+
+[[bench]]
+name = "dsp_bench"
+harness = false
