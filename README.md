@@ -1,5 +1,4 @@
 # saavy_dsp
-test saldfkjasldkfj
 
 learn digital audio by building synthesizers in rust.
 
